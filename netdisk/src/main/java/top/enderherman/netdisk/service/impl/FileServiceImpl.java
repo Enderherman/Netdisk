@@ -44,6 +44,9 @@ import java.util.stream.Collectors;
 public class FileServiceImpl implements FileService {
 
     @Resource
+    private StorageCopyService storageCopyService;
+
+    @Resource
     private FileMapper<FileInfo, FileQuery> fileMapper;
 
     @Resource
@@ -479,43 +482,7 @@ public class FileServiceImpl implements FileService {
      */
     @Override
     public void saveShare(String shareRootFilePid, String shareFileIds, String myFolderId, String shareUserId, String currentUserId) {
-        String[] shareFileIdArray = shareFileIds.split(",");
-        //1.目标目录文件列表
-        FileQuery query = new FileQuery();
-        query.setUserId(currentUserId);
-        query.setFilePid(myFolderId);
-        List<FileInfo> currentFileList = fileMapper.selectList(query);
-        Map<String, FileInfo> currentFileMap = currentFileList.stream().collect(Collectors.toMap(FileInfo::getFileName, Function.identity(), (file1, file2) -> file2));
-        //2.要保存的文件
-        query = new FileQuery();
-        query.setUserId(shareUserId);
-        query.setFileIdArray(shareFileIdArray);
-        List<FileInfo> shareFileList = fileMapper.selectList(query);
-        //3.重命名选择的文件
-        List<FileInfo> copyFileList = new ArrayList<>();
-        Date curDate = new Date();
-        for (FileInfo item : shareFileList) {
-            FileInfo haveFile = currentFileMap.get(item.getFileName());
-            if (haveFile != null) {
-                item.setFileName(StringUtils.rename(item.getFileName()));
-            }
-            findAllSubFile(copyFileList, item, shareUserId, currentUserId, curDate, myFolderId);
-        }
-        fileMapper.insertBatch(copyFileList);
-
-        //4.更新空间
-        Long useSpace = fileMapper.selectUseSpace(currentUserId);
-        User dbUserInfo = userMapper.selectByUserId(currentUserId);
-        if (useSpace > dbUserInfo.getTotalSpace()) {
-            throw new BusinessException(ResponseCodeEnum.CODE_904);
-        }
-        User userInfo = new User();
-        userInfo.setUseSpace(useSpace);
-        userMapper.updateByUserId(userInfo, currentUserId);
-        //5.设置缓存
-        UserSpaceDto userSpaceDto = redisComponent.getUserSpace(currentUserId);
-        userSpaceDto.setUseSpace(useSpace);
-        redisComponent.saveUserSpaceDto(currentUserId, userSpaceDto);
+        storageCopyService.saveShare(shareRootFilePid, shareFileIds, myFolderId, shareUserId, currentUserId);
     }
 
     /**
