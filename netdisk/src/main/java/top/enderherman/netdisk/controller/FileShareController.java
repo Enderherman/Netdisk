@@ -4,6 +4,7 @@ package top.enderherman.netdisk.controller;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
 import top.enderherman.netdisk.annotation.VerifyParam;
+import top.enderherman.netdisk.annotation.GlobalInterceptor;
 import top.enderherman.netdisk.common.BaseResponse;
 import top.enderherman.netdisk.entity.dto.SessionWebUserDto;
 import top.enderherman.netdisk.entity.pojo.FileShare;
@@ -28,6 +29,7 @@ public class FileShareController extends ABaseController {
      * 查询分享文件
      */
     @RequestMapping("/loadShareList")
+    @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> loadDataList(HttpSession session, FileShareQuery query) {
         SessionWebUserDto userDto = getUserInfoFromSession(session);
         query.setUserId(userDto.getUserId());
@@ -42,6 +44,7 @@ public class FileShareController extends ABaseController {
      * 新增分享文件
      */
     @RequestMapping("/shareFile")
+    @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> shareFile(HttpSession session,
                                      @VerifyParam(required = true) String fileId,
                                      @VerifyParam(required = true) Integer validType,
@@ -60,6 +63,7 @@ public class FileShareController extends ABaseController {
      * 取消分享
      */
     @RequestMapping("/cancelShare")
+    @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> cancelShare(HttpSession session,
                                        @VerifyParam(required = true) String shareIds) {
         SessionWebUserDto userDto = getUserInfoFromSession(session);

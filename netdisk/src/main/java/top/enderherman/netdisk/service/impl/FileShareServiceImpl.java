@@ -16,12 +16,16 @@ import top.enderherman.netdisk.entity.dto.SessionShareDto;
 import top.enderherman.netdisk.entity.enums.PageSizeEnum;
 import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
 import top.enderherman.netdisk.entity.enums.ShareValidTypeEnum;
+import top.enderherman.netdisk.entity.enums.FileDeleteFlagEnum;
+import top.enderherman.netdisk.entity.pojo.FileInfo;
 import top.enderherman.netdisk.entity.query.FileShareQuery;
 import top.enderherman.netdisk.entity.pojo.FileShare;
 import top.enderherman.netdisk.entity.vo.PaginationResultVO;
 import top.enderherman.netdisk.entity.query.SimplePage;
 import top.enderherman.netdisk.mapper.FileShareMapper;
 import top.enderherman.netdisk.service.FileShareService;
+import top.enderherman.netdisk.service.FileService;
+import top.enderherman.netdisk.service.ShareAccessService;
 
 
 /**
@@ -32,6 +36,10 @@ public class FileShareServiceImpl implements FileShareService {
 
     @Resource
     private FileShareMapper<FileShare, FileShareQuery> fileShareMapper;
+    @Resource
+    private FileService fileService;
+    @Resource
+    private ShareAccessService shareAccessService;
 
     /**
      * 根据条件查询列表
@@ -140,6 +148,14 @@ public class FileShareServiceImpl implements FileShareService {
      */
     @Override
     public void saveShare(FileShare fileShare) {
+        FileInfo file = fileService.getFileInfoByFileIdAndUserId(fileShare.getFileId(), fileShare.getUserId());
+        if (file == null || !FileDeleteFlagEnum.USING.getFlag().equals(file.getDelFlag())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        shareAccessService.requireOwnFolder(fileShare.getUserId(), file.getFilePid());
+        if (!StringUtils.isEmpty(fileShare.getCode()) && !fileShare.getCode().matches("[A-Za-z0-9]{4,5}")) {
+            throw new BusinessException("提取码必须为 4 至 5 位字母或数字");
+        }
         ShareValidTypeEnum shareValidTypeEnum = ShareValidTypeEnum.getByType(fileShare.getValidType());
         if (shareValidTypeEnum == null) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);
@@ -179,10 +195,7 @@ public class FileShareServiceImpl implements FileShareService {
 
     @Override
     public SessionShareDto checkShareCode(String shareId, String code) {
-        FileShare share = fileShareMapper.selectByShareId(shareId);
-        if (null == share || (share.getExpireTime() != null && new Date().after(share.getExpireTime()))) {
-            throw new BusinessException(ResponseCodeEnum.CODE_902);
-        }
+        FileShare share = shareAccessService.requireActiveShare(shareId);
         if (!share.getCode().equals(code)) {
             throw new BusinessException("提取码错误");
         }

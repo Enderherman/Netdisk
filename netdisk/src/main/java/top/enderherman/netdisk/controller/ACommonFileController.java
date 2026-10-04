@@ -18,6 +18,8 @@ import top.enderherman.netdisk.entity.pojo.FileInfo;
 import top.enderherman.netdisk.entity.query.FileQuery;
 import top.enderherman.netdisk.entity.vo.FileInfoVO;
 import top.enderherman.netdisk.service.FileService;
+import top.enderherman.netdisk.service.ShareAccessService;
+import top.enderherman.netdisk.entity.pojo.FileShare;
 import top.enderherman.netdisk.common.utils.StringUtils;
 
 
@@ -37,6 +39,8 @@ public class ACommonFileController extends ABaseController {
 
     @Resource
     private RedisComponent redisComponent;
+    @Resource
+    private ShareAccessService shareAccessService;
 
     /**
      * 获取缩略图
@@ -123,16 +127,32 @@ public class ACommonFileController extends ABaseController {
 
     //获取当前目录
     protected BaseResponse<?> getFolderInfo(String path, String userId) {
-        String[] pathArray = path.split("/");
+        if (path == null || path.length() > 2200 || !path.matches("[A-Za-z0-9]+(?:/[A-Za-z0-9]+)*")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        String[] pathArray = java.util.Arrays.stream(path.split("/"))
+                .filter(id -> !Constants.ZERO_STR.equals(id)).distinct().toArray(String[]::new);
+        if (pathArray.length == 0) {
+            return getSuccessResponse(java.util.Collections.emptyList());
+        }
+        for (String id : pathArray) {
+            if (id.length() > 10) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         FileQuery fileInfoQuery = new FileQuery();
         fileInfoQuery.setUserId(userId);
         fileInfoQuery.setFolderType(FileFolderTypeEnum.FOLDER.getType());
+        fileInfoQuery.setDelFlag(top.enderherman.netdisk.entity.enums.FileDeleteFlagEnum.USING.getFlag());
         fileInfoQuery.setFileIdArray(pathArray);
-        //order by ("","") 按split顺序排序
-        String orderBy = "field(file_id,\"" + org.apache.commons.lang3.StringUtils.join(pathArray, "\",\"") + "\")";
-        fileInfoQuery.setOrderBy(orderBy);
         List<FileInfo> fileInfoList = fileInfoService.findListByParam(fileInfoQuery);
-        return getSuccessResponse(CopyUtils.copyList(fileInfoList, FileInfoVO.class));
+        java.util.Map<String, FileInfo> byId = new java.util.HashMap<>();
+        fileInfoList.forEach(file -> byId.put(file.getFileId(), file));
+        java.util.List<FileInfo> ordered = new java.util.ArrayList<>();
+        for (String id : pathArray) {
+            FileInfo file = byId.get(id);
+            if (file == null) throw new BusinessException(ResponseCodeEnum.CODE_600);
+            ordered.add(file);
+        }
+        return getSuccessResponse(CopyUtils.copyList(ordered, FileInfoVO.class));
     }
 
     /**
@@ -160,12 +180,23 @@ public class ACommonFileController extends ABaseController {
     protected void download(HttpServletRequest request, HttpServletResponse response, String code) throws Exception {
         DownloadFileDto downloadFileDto = redisComponent.getDownloadCode(code);
         if (downloadFileDto == null){
-            return;
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        if (downloadFileDto.getShareId() != null) {
+            FileShare share = shareAccessService.requireActiveShare(downloadFileDto.getShareId());
+            if (!share.getUserId().equals(downloadFileDto.getUserId())) {
+                throw new BusinessException(ResponseCodeEnum.CODE_902);
+            }
+            FileInfo file = shareAccessService.requireSharedFile(share, downloadFileDto.getFileId());
+            if (!java.util.Objects.equals(file.getFilePath(), downloadFileDto.getFilePath())) {
+                throw new BusinessException(ResponseCodeEnum.CODE_902);
+            }
         }
         String filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + downloadFileDto.getFilePath();
         String fileName = downloadFileDto.getFileName();
         response.setContentType("application/x-msdownload; charset=UTF-8");
-        if (request.getHeader("User-Agent").toLowerCase().indexOf("msie") > 0){
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent != null && userAgent.toLowerCase(java.util.Locale.ROOT).contains("msie")){
             //IE浏览器
             fileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
         }else {
