@@ -20,7 +20,7 @@ workspace/
     nginx/nginx.conf
 ```
 
-需要 Docker Engine 与 Compose v2，建议 Compose 2.20 及以上。Linux/amd64 和 Linux/arm64 是否适配仍需在目标机器构建验证；本次没有运行镜像来确认架构兼容性。镜像使用官方来源和固定主/次版本系列：
+需要 Docker Engine 与 Compose v2，建议 Compose 2.20 及以上。Linux/amd64 镜像已在 GitHub Ubuntu 24.04 runner 实际构建并检查；Linux/arm64 仍需在目标机器验证。镜像使用官方来源和固定主/次版本系列：
 
 | 用途 | 默认镜像 |
 | --- | --- |
@@ -31,11 +31,11 @@ workspace/
 | 数据库 | `mysql:8.4` |
 | 缓存 | `redis:7.4-alpine` |
 
-这些标签在 2026-10-05 查询官方 Docker Hub 均返回存在；未拉取或构建镜像。标签会随补丁更新，正式升级时记录镜像摘要以便回滚。镜像构建还需访问 Maven Central、npm 注册表与 Ubuntu 官方软件仓库。
+这些标签在 2026-10-05 查询官方 Docker Hub 均返回存在，后续两仓库 CI 已实际拉取并构建镜像。标签会随补丁更新，正式升级时记录镜像摘要以便回滚。镜像构建还需访问 Maven Central、npm 注册表与 Ubuntu 官方软件仓库。
 
 ## 首次准备
 
-以下示例在后端仓库根目录执行。它们是给操作者的部署步骤，本次交付没有执行 `up`、`run`、`stop` 或数据库导入。
+以下示例在后端仓库根目录执行。它们是给操作者的部署步骤，本次没有在本机或 NAS 执行这些步骤或导入业务数据库；远端 CI 仅运行临时镜像检查容器。
 
 1. 选择两个仓库已经验证的提交，复制 `deploy/.env.example` 为 `deploy/.env`。
 2. 为 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`REDIS_PASSWORD` 分别填写独立随机密码。示例故意留空，Compose 会拒绝空凭据。可用密码管理器生成，或执行 `openssl rand -hex 32` 生成十六进制密码。
@@ -176,11 +176,11 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up -d redis backend
 
 本次已通过 Docker Compose 2.39.1 配置解析、空凭据拒绝、隔离网络/端口/非 root 配置检查、Java 17 健康探针编译及 Nginx 关键指令静态检查。初始化脚本与 3 段 CI shell 通过 Bash 语法检查，JAR 检查脚本通过 Python 语法解析；所用六种官方基础镜像标签已查询存在。
 
-本机 Docker Linux 引擎未运行，所以**没有构建镜像、没有运行容器、没有执行 `nginx -t`、没有导入数据库、没有完成容器端到端或 NAS 验收**。后续应在获准的 Docker 环境中补齐这些验证。
+本机 Docker Linux 引擎未运行，没有在本机启动容器或导入数据库。远端 CI 已补齐镜像构建、受控容器和 Nginx 验证；完整 Compose 业务上线、目标平台持久化/恢复及 NAS 验收仍未执行。
 
 两个仓库另新增独立的 `docker-build.yml` GitHub Actions，不替换现有业务测试 CI。工作流使用官方 Ubuntu 24.04 托管 runner 自带 Docker，权限仅为仓库读取，不推送镜像、不部署应用：
 
 - 后端构建镜像，检查可执行 Java 17 JAR、非 root 用户、打包的健康探针，并在无网络临时容器中验证存储可写和健康探针能拒绝未启动的应用。
 - 前端构建镜像，用 `--add-host backend:127.0.0.1` 执行真实 `nginx -t`；随后仅在无网络临时容器的回环地址短时启动 Nginx，检查实际 `.mjs` Worker MIME、SPA 回退及静态资源 404。再用假的 QQ callback 参数和下载短码强制产生 502，检查容器 stdout/stderr 不包含测试 code/state/token；普通 200 请求同时验证查询参数和 Referer 已去除，下载失败只保留 `[redacted]` 路径，而安全访问日志仍正常存在。没有真实 QQ 请求或发布端口，测试结束删除临时容器。
 
-这些工作流需提交后由远端执行。本次仅交付配置，尚未宣称远端 CI 已通过；发布时应核对两个 Docker 工作流结果。
+两个 Docker 工作流均已成功：后端 https://github.com/Enderherman/Netdisk/actions/runs/37227282709 ，前端 https://github.com/Enderherman/NetdiskWeb/actions/runs/37226760993 。两者只验证构建与所列容器行为，不代表生产部署已经完成。
