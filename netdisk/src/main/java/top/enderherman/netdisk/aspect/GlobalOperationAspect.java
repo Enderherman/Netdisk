@@ -20,6 +20,7 @@ import top.enderherman.netdisk.common.constants.Constants;
 import top.enderherman.netdisk.common.exceptions.BusinessException;
 import top.enderherman.netdisk.common.utils.StringUtils;
 import top.enderherman.netdisk.common.utils.VerifyUtils;
+import top.enderherman.netdisk.common.utils.SafeRequestDiagnostics;
 import top.enderherman.netdisk.entity.dto.SessionWebUserDto;
 import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
 import top.enderherman.netdisk.entity.enums.UserStatusEnum;
@@ -73,10 +74,10 @@ public class GlobalOperationAspect {
             }
 
         } catch (BusinessException e) {
-            log.error("全局拦截器异常", e);
+            SafeRequestDiagnostics.log(log, SafeRequestDiagnostics.Phase.INTERCEPTOR, e);
             throw e;
         } catch (Throwable e) {
-            log.error("全局拦截器异常", e);
+            SafeRequestDiagnostics.log(log, SafeRequestDiagnostics.Phase.INTERCEPTOR, e);
             throw new BusinessException(ResponseCodeEnum.CODE_500);
         }
     }
@@ -142,10 +143,10 @@ public class GlobalOperationAspect {
 
 
         } catch (BusinessException e) {
-            log.error("校验参数失败", e);
+            SafeRequestDiagnostics.log(log, SafeRequestDiagnostics.Phase.PARAMETER_VALIDATION, e);
             throw e;
         } catch (Exception e) {
-            log.error("校验参数失败", e);
+            SafeRequestDiagnostics.log(log, SafeRequestDiagnostics.Phase.PARAMETER_VALIDATION, e);
             throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
     }

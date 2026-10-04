@@ -1,3 +1,7 @@
+logging:
+  level:
+    # DispatcherServlet 的默认 404 WARN 含原始路径；由安全全局处理器记录路由诊断。
+    org.springframework.web.servlet.PageNotFound: "OFF"
 server:
   port: ${NETDISK_PORT:7090}
   servlet:

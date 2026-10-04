@@ -13,6 +13,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.NoHandlerFoundException;
 import top.enderherman.netdisk.common.BaseResponse;
 import top.enderherman.netdisk.common.exceptions.BusinessException;
+import top.enderherman.netdisk.common.utils.SafeRequestDiagnostics;
 import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
 
 @RestControllerAdvice
@@ -22,7 +23,7 @@ public class AGlobalExceptionHandlerController extends ABaseController {
     @ExceptionHandler(value = Exception.class)
     Object handleException(Exception e, HttpServletRequest request, HttpServletResponse response) throws Exception {
         if (response.isCommitted()) throw e;
-        logger.error("请求错误，请求地址{},错误信息:", request.getRequestURL(), e);
+        SafeRequestDiagnostics.log(logger, SafeRequestDiagnostics.Phase.REQUEST, request, e);
         BaseResponse<?> ajaxResponse = new BaseResponse<>();
         //404
         if (e instanceof HttpRequestMethodNotSupportedException) {
