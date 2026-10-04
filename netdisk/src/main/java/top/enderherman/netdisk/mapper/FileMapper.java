@@ -46,5 +46,7 @@ public interface FileMapper<T,P> extends BaseMapper<T,P>{
 
     List<T> selectStorageReferencesForUpdate(@Param("filePath") String filePath);
 
+    List<T> selectFilesForUpdate(@Param("userId") String userId, @Param("fileIds") List<String> fileIds);
+
 
 }

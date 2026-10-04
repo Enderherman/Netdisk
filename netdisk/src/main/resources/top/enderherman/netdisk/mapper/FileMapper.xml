@@ -605,4 +605,10 @@
         select <include refid="base_column_list"/> from file_info
         where file_path = #{filePath} for update
     </select>
+    <select id="selectFilesForUpdate" resultMap="base_result_map">
+        select <include refid="base_column_list"/> from file_info
+        where user_id=#{userId} and file_id in
+        <foreach collection="fileIds" item="fileId" open="(" separator="," close=")">#{fileId}</foreach>
+        order by file_id for update
+    </select>
 </mapper>

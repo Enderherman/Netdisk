@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>top.enderherman</groupId>
     <artifactId>netdisk</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
     <name>netdisk</name>
     <description>Netdisk personal cloud storage backend</description>
     <properties>
