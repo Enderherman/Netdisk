@@ -1,13 +1,8 @@
-#项目目录
 project:
-  folder: C:/Users/Administrator/Desktop/java/netdisk
+  folder: ${NETDISK_STORAGE:./data/}
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: 1234
-    url: jdbc:mysql://localhost:3306/netdisk?useUnicode=true&characterEncoding=utf-8&allowMultiQueries=true&useSSL=false&serverTimezone=GMT%2b8&allowPublicKeyRetrieval=true
-#日志级别配置
-log:
-  root:
-    level: info
+    url: ${NETDISK_DB_URL:jdbc:mysql://127.0.0.1:3306/netdisk?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${NETDISK_DB_USER:netdisk}
+    password: ${NETDISK_DB_PASSWORD:}

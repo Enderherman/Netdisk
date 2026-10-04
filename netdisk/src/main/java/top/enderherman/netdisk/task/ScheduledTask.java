@@ -4,6 +4,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import top.enderherman.netdisk.common.config.AppConfig;
 import top.enderherman.netdisk.common.constants.Constants;
 import top.enderherman.netdisk.common.utils.StringUtils;
@@ -20,6 +21,7 @@ import java.util.List;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "netdisk.cleanup-enabled", havingValue = "true", matchIfMissing = true)
 public class ScheduledTask {
 
     @Resource

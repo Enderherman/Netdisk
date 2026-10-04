@@ -4,9 +4,9 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>top.enderherman</groupId>
     <artifactId>netdisk</artifactId>
-    <version>0.0.2-SNAPSHOT</version>
+    <version>0.1.0</version>
     <name>netdisk</name>
-    <description>Demo project for Spring Boot</description>
+    <description>Netdisk personal cloud storage backend</description>
     <properties>
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -14,6 +14,12 @@
         <spring-boot.version>3.0.2</spring-boot.version>
     </properties>
     <dependencies>
+
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -126,6 +132,11 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

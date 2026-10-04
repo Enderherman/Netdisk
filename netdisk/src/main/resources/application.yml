@@ -1,12 +1,12 @@
 server:
-  port: 7090
+  port: ${NETDISK_PORT:7090}
   servlet:
     context-path: /api
     session:
       timeout: PT60M
 spring:
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   servlet:
     multipart:
       max-file-size: 100MB
@@ -17,24 +17,24 @@ spring:
     resources:
       add-mappings: false
   mail:
-    host: smtp.qq.com
-    port: 465
+    host: ${NETDISK_MAIL_HOST:smtp.qq.com}
+    port: ${NETDISK_MAIL_PORT:465}
     #自个的奥
-    username:
-    password:
+    username: ${NETDISK_MAIL_USER:}
+    password: ${NETDISK_MAIL_PASSWORD:}
     #######
     default-encoding: UTF-8
     properties:
       mail:
         smtp:
           socketFactory: javax.net.ssl.SSLSocketFactory
-      debug: true
+      debug: false
     protocol: smtps
   data:
     redis:
-      database: 0
-      host: 127.0.0.1
-      port: 6379
+      database: ${NETDISK_REDIS_DB:0}
+      host: ${NETDISK_REDIS_HOST:127.0.0.1}
+      port: ${NETDISK_REDIS_PORT:6379}
       timeout: 2000ms
       lettuce:
         pool:
@@ -48,12 +48,12 @@ spring:
 #    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 admin:
-  email: 1261408331@qq.com,Enderherman@outlook.com
+  email: ${NETDISK_ADMIN_EMAILS:}
 # qq登陆相关
 qq:
   app:
-    id: 12333
-    key: 2222222
+    id: ${NETDISK_QQ_APP_ID:}
+    key: ${NETDISK_QQ_APP_KEY:}
   url:
     authorization: https://graph.qq.com/oauth2.0/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s
     access:
@@ -61,4 +61,4 @@ qq:
     openid: https://graph.qq.com/oauth2.0/me?access_token=%S
     user:
       info: https://graph.qq.com/user/get_user_info?access_token=%s&oauth_consumer_key=%s&openid=%s
-    redirect: http://easypan.wuhancoder.com/qqlogincalback
+    redirect: ${NETDISK_QQ_REDIRECT:}

@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:netdisk_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ''
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-test.sql
+  mail:
+    host: localhost
+    username: test@example.invalid
+    password: unused
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 1
+project:
+  folder: ./target/test-storage/
+netdisk:
+  cleanup-enabled: false
+admin:
+  email: admin@example.invalid
