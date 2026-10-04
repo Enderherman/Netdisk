@@ -28,6 +28,7 @@ public class StorageCopyService {
     @Resource private FileMapper<FileInfo, FileQuery> fileMapper;
     @Resource private UserMapper<User, UserQuery> userMapper;
     @Resource private RedisComponent redisComponent;
+    @Resource private FileUploadService fileUploadService;
 
     @Transactional(rollbackFor = Exception.class)
     public void saveShare(String sharedRoot, String fileIds, String destination,
@@ -104,7 +105,10 @@ public class StorageCopyService {
             }
         }
         long used = Optional.ofNullable(fileMapper.selectUseSpace(targetUser)).orElse(0L);
-        if (target.getTotalSpace() == null || additionalSize > target.getTotalSpace() - used) {
+        long uploadReserved = fileUploadService.pendingUploadBytes(targetUser);
+        if (target.getTotalSpace() == null || used > target.getTotalSpace()
+                || uploadReserved > target.getTotalSpace() - used
+                || additionalSize > target.getTotalSpace() - used - uploadReserved) {
             throw new BusinessException(ResponseCodeEnum.CODE_904);
         }
         for (int offset = 0; offset < copies.size(); offset += 500) {

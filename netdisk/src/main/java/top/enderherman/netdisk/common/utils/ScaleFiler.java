@@ -1,53 +1,56 @@
 package top.enderherman.netdisk.common.utils;
 
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Iterator;
 
-public class ScaleFiler {
-    private static final Logger logger = LoggerFactory.getLogger(ScaleFiler.class);
+/** 图片缩略图不依赖外部进程；无法解码时保留原件且不声称封面存在。 */
+@Slf4j
+public final class ScaleFiler {
+    private ScaleFiler() { }
 
-    public static void createCover4Video(File sourceFile, Integer width, File targetFile){
-        try {
-            String cmd = "ffmpeg -i %s -y -vframes 1 -vf scale=%d:%d/a %s";
-            ProcessUtils.executeCommand(String.format(cmd, sourceFile.getAbsoluteFile(),width, width, targetFile.getAbsoluteFile()), false);
-
-        }catch (Exception e){
-            logger.error("生成视频封面失败",e);
-        }
-    }
-
-    public static Boolean createThumbnailWidthFFmpeg(File file, int thumbnailWidth, File targetFile, Boolean delSource){
-        try {
-            BufferedImage src = ImageIO.read(file);
-            //thumbnailWidth 缩略图宽度  thumbnailHeight 缩略图高度
-            int sourceW = src.getWidth();
-            int sourceH = src.getHeight();
-            //小于指定高宽不压缩
-            if (sourceW <= thumbnailWidth){
-                return false;
-            }
-            compressImage(file, thumbnailWidth, targetFile, delSource);
-            return true;
-        }catch (Exception e){
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    public static void compressImage(File sourceFile, Integer width, File targetFile, Boolean delSource){
-        try {
-            String cmd = "ffmpeg -i %s -vf scale=%d:-1 %s -y";
-            ProcessUtils.executeCommand(String.format(cmd, sourceFile.getAbsoluteFile(), width, targetFile.getAbsoluteFile()), false);
-            if (delSource){
-                FileUtils.forceDelete(sourceFile);
-            }
-        }catch (Exception e){
-            logger.error("压缩图片失败");
+    public static boolean createThumbnail(Path source, Path target, int maxDimension) {
+        ImageReader reader = null;
+        try (ImageInputStream stream = ImageIO.createImageInputStream(source.toFile())) {
+            if (stream == null) return false;
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) return false;
+            reader = readers.next();
+            reader.setInput(stream, true, true);
+            int width = reader.getWidth(0);
+            int height = reader.getHeight(0);
+            if (width <= 0 || height <= 0 || (long) width * height > 40_000_000L) return false;
+            ImageReadParam params = reader.getDefaultReadParam();
+            int sampling = Math.max(1, Math.max(width, height) / 1200);
+            params.setSourceSubsampling(sampling, sampling, 0, 0);
+            BufferedImage image = reader.read(0, params);
+            double scale = Math.min(1d, (double) maxDimension / Math.max(image.getWidth(), image.getHeight()));
+            BufferedImage thumbnail = new BufferedImage(Math.max(1, (int) Math.round(image.getWidth() * scale)),
+                    Math.max(1, (int) Math.round(image.getHeight() * scale)), BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = thumbnail.createGraphics();
+            try {
+                graphics.setColor(Color.WHITE);
+                graphics.fillRect(0, 0, thumbnail.getWidth(), thumbnail.getHeight());
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                graphics.drawImage(image, 0, 0, thumbnail.getWidth(), thumbnail.getHeight(), null);
+            } finally { graphics.dispose(); }
+            return ImageIO.write(thumbnail, "jpg", target.toFile());
+        } catch (IOException | RuntimeException ex) {
+            log.warn("缩略图生成失败，保留原件：{}", source, ex);
+            try { Files.deleteIfExists(target); }
+            catch (IOException cleanup) { log.warn("缩略图临时文件清理失败：{}", target, cleanup); }
+            return false;
+        } finally {
+            if (reader != null) reader.dispose();
         }
     }
 }
