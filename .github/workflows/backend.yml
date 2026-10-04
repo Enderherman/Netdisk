@@ -11,4 +11,3 @@ jobs:
           java-version: '17'
           cache: maven
       - run: mvn -B -ntp verify
-        working-directory: netdisk

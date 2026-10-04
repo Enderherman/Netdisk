@@ -4,7 +4,7 @@
 
 ## 部署与兼容
 
-已有数据库先备份并执行一次 `database/migrations/20261004_account_security.sql`，再启动新版本。全新部署直接使用 `database.sql`。迁移将 password 列扩展到 255，增加 `session_version` 与邮件码 `purpose`，使无用途的旧验证码失效。
+已有数据库先备份并执行一次 `sql/migrations/20261004_account_security.sql`，再启动新版本。全新部署直接使用 `sql/init.sql`。上述路径为 1.1.0 起的当前布局；旧版路径 `database/migrations/` 和 `database.sql` 已迁移。迁移将 password 列扩展到 255，增加 `session_version` 与邮件码 `purpose`，使无用途的旧验证码失效。
 
 新前端所有密码均传明文，由 HTTPS 保护传输；不要在浏览器做 MD5。服务端使用 PBKDF2-HMAC-SHA256、600000 轮、16 字节随机盐、32 字节派生密钥。旧数据库 MD5 密码在用户首次正确明文登录时自动升级，其他账户不必提前重置密码。仍在客户端 MD5 的旧前端需要同步升级。
 
@@ -14,7 +14,7 @@
 
 | 方法与路径 | 参数与行为 |
 | --- | --- |
-| `GET /accountCapabilities` | 返回 `emailVerificationEnabled` 与 `qqLoginEnabled:false`，不暴露邮件凭据。 |
+| `GET /accountCapabilities` | 返回动态的 `emailVerificationEnabled` 与 `qqLoginEnabled`，不暴露邮件或QQ凭据。QQ默认关闭，仅显式启用且配置完整时返回true。 |
 | `GET /checkCode?type=0` | 登录、注册、找回用图形验证码；`type=1` 用于发送邮件码。验证码在提交时即消费，成功或失败都需要刷新。 |
 | `POST /sendEmailCode` | `email,checkCode,type`。type 只接受 0 注册、1 找回；未配置邮件服务明确报错。 |
 | `POST /register` | `email,nickName,password,checkCode,emailCode`；昵称 1–20 字符，密码 8–64 位且至少包含英文字母与数字。 |
@@ -24,7 +24,7 @@
 | `GET /getUserInfo` | 当前会话用户。 |
 | `GET /getUseSpace` | `{useSpace,totalSpace}`，字节。 |
 | `POST /logout` | 当前会话失效。 |
-| `/qqlogin`、`/qqlogin/callback` | QQ 登录尚未实现，明确返回未启用，不返回成功或伪造 OAuth 会话。 |
+| `POST /qqlogin`、`GET/POST /qqlogin/callback` | QQ OAuth已实现，未配置时明确返回未启用；一次性state、限流、同源回跳和外部验收边界见[QQ接口说明](API-QQ.md)。 |
 
 ## 邮件码和请求限制
 

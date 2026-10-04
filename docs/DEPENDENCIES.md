@@ -28,7 +28,7 @@
 
 ## 移除的未使用依赖
 
-对 `netdisk/src`（包括测试）查询了导入及限定类名，未发现 Fastjson、MyBatis-Plus 或 Commons IO 使用，因此移除：
+升级审查时对旧布局 `netdisk/src`（包括测试）查询了导入及限定类名，未发现 Fastjson、MyBatis-Plus 或 Commons IO 使用，因此移除。1.1.0 起对应目录为根目录 `src/`，构建入口为根目录 `pom.xml`；此处保留当时审查路径，不表示需要进入旧 `netdisk/` 子目录：
 
 - Fastjson 1.2.83。
 - MyBatis-Plus extension 3.5.3。

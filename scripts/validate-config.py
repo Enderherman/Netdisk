@@ -15,22 +15,24 @@ parser.add_argument('--javac', help='Optional absolute path to a Java 17+ compil
 parser.add_argument('--bash', help='Optional existing Bash executable for syntax-only script checks')
 arguments = parser.parse_args()
 
-deploy = Path(__file__).resolve().parent
-backend = deploy.parent
+scripts = Path(__file__).resolve().parent
+backend = scripts.parent
 frontend = backend.parent / 'NetdiskWeb'
 checks = []
 
 with tempfile.TemporaryDirectory(prefix='netdisk-deploy-check-') as temporary:
     temp = Path(temporary)
     env = temp / 'compose.env'
-    env.write_text('\n'.join([
-        'COMPOSE_PROJECT_NAME=netdisk-validation',
-        'MYSQL_ROOT_PASSWORD=validation-only-not-a-secret-root',
-        'MYSQL_PASSWORD=validation-only-not-a-secret-app',
-        'REDIS_PASSWORD=validation-only-not-a-secret-redis',
-        f'NETDISK_WEB_CONTEXT={frontend.as_posix()}',
-    ]) + '\n', encoding='utf-8')
-    command = ['docker', 'compose', '--env-file', str(env), '-f', str(deploy / 'compose.yaml'), 'config', '--format', 'json']
+    example = (backend / '.env.compose.example').read_text(encoding='utf-8')
+    values = {'COMPOSE_PROJECT_NAME': 'netdisk-validation',
+              'MYSQL_ROOT_PASSWORD': 'validation-only-not-a-secret-root',
+              'MYSQL_PASSWORD': 'validation-only-not-a-secret-app',
+              'REDIS_PASSWORD': 'validation-only-not-a-secret-redis'}
+    for name, value in values.items():
+        example, count = re.subn(rf'^{name}=.*$', f'{name}={value}', example, flags=re.M)
+        assert count == 1, f'Missing or duplicate example setting: {name}'
+    env.write_text(example, encoding='utf-8')
+    command = ['docker', 'compose', '--env-file', str(env), '-f', str(backend / 'compose.yaml'), 'config', '--format', 'json']
     validation_environment = os.environ.copy()
     for variable in list(validation_environment):
         if variable.startswith(('MYSQL_', 'REDIS_', 'NETDISK_', 'COMPOSE_')):
@@ -50,9 +52,16 @@ with tempfile.TemporaryDirectory(prefix='netdisk-deploy-check-') as temporary:
     assert services['backend']['depends_on']['mysql']['condition'] == 'service_healthy'
     assert services['frontend']['depends_on']['backend']['condition'] == 'service_healthy'
     assert Path(services['frontend']['build']['context']).resolve() == frontend.resolve()
+    assert Path(services['backend']['build']['context']).resolve() == backend.resolve()
+    assert services['backend']['build']['dockerfile'] == 'Dockerfile'
+    mounted = {item['target']: Path(item['source']).resolve() for item in services['mysql']['volumes'] if item['type'] == 'bind'}
+    assert mounted['/opt/netdisk-schema/init.sql'] == (backend / 'sql/init.sql').resolve()
+    assert mounted['/docker-entrypoint-initdb.d/010-schema.sh'] == (scripts / 'mysql/010-schema.sh').resolve()
+    assert all(path.is_file() for path in mounted.values())
     checks.append('Compose JSON valid; only loopback frontend published; internal data network and non-root backend')
+    checks.append('Root Docker context and relocated SQL/init-script bind mounts resolve to existing files')
 
-    missing = subprocess.run(['docker', 'compose', '--env-file', str(deploy / '.env.example'), '-f', str(deploy / 'compose.yaml'), 'config', '--quiet'],
+    missing = subprocess.run(['docker', 'compose', '--env-file', str(backend / '.env.compose.example'), '-f', str(backend / 'compose.yaml'), 'config', '--quiet'],
                              env=validation_environment, text=True, capture_output=True)
     assert missing.returncode != 0, 'Empty example credentials must not create a runnable deployment'
     checks.append('Blank credential example is rejected instead of supplying default production passwords')
@@ -60,18 +69,18 @@ with tempfile.TemporaryDirectory(prefix='netdisk-deploy-check-') as temporary:
     home_compiler = Path(os.environ.get('JAVA_HOME', '')) / 'bin' / ('javac.exe' if os.name == 'nt' else 'javac')
     java = arguments.javac or (str(home_compiler) if home_compiler.is_file() else shutil.which('javac'))
     if java:
-        subprocess.run([java, '--release', '17', '-d', str(temp), str(deploy / 'Healthcheck.java')], check=True)
+        subprocess.run([java, '--release', '17', '-d', str(temp), str(scripts / 'Healthcheck.java')], check=True)
         assert (temp / 'Healthcheck.class').is_file()
         checks.append('Java 17 health probe compiled (not executed against a service)')
     else:
         checks.append('Java health probe compilation skipped: javac not available')
 
-    schema = (backend / 'database.sql').read_text(encoding='utf-8')
+    schema = (backend / 'sql/init.sql').read_text(encoding='utf-8')
     assert 'session_version' in schema and 'purpose' in schema and 'varchar(255)' in schema
-    init = (deploy / 'mysql/010-schema.sh').read_text(encoding='utf-8')
-    assert b'\r\n' not in (deploy / 'mysql/010-schema.sh').read_bytes(), 'Container init script must retain LF line endings'
-    assert '/opt/netdisk-schema/database.sql' in init and 'create database netdisk' in init
-    migration = (backend / 'database/migrations/20261004_account_security.sql').read_text(encoding='utf-8')
+    init = (scripts / 'mysql/010-schema.sh').read_text(encoding='utf-8')
+    assert b'\r\n' not in (scripts / 'mysql/010-schema.sh').read_bytes(), 'Container init script must retain LF line endings'
+    assert '/opt/netdisk-schema/init.sql' in init and 'create database netdisk' in init
+    migration = (backend / 'sql/migrations/20261004_account_security.sql').read_text(encoding='utf-8')
     assert 'ADD COLUMN session_version' in migration and 'ADD COLUMN purpose' in migration
     checks.append('Fresh schema includes current account fields; old schema migration remains an explicit upgrade step')
 
@@ -96,14 +105,14 @@ with tempfile.TemporaryDirectory(prefix='netdisk-deploy-check-') as temporary:
     checks.append('Static Nginx proxy/streaming/Range/SPA/Worker MIME invariants present; nginx -t not executed')
     checks.append('Query/referrer-free access; four download-token routes redacted; QQ access and API upstream error logs suppressed')
 
-    for dockerfile in (deploy / 'backend.Dockerfile', frontend / 'Dockerfile'):
+    for dockerfile in (backend / 'Dockerfile', frontend / 'Dockerfile'):
         assert dockerfile.is_file() and 'HEALTHCHECK' in dockerfile.read_text(encoding='utf-8')
-    assert '**' in (deploy / 'backend.Dockerfile.dockerignore').read_text(encoding='utf-8')
+    assert '**' in (backend / '.dockerignore').read_text(encoding='utf-8')
     assert '**' in (frontend / '.dockerignore').read_text(encoding='utf-8')
     checks.append('Both images have health probes and allowlisted build contexts')
 
     if arguments.bash:
-        subprocess.run([arguments.bash, '-n', str(deploy / 'mysql/010-schema.sh')], check=True)
+        subprocess.run([arguments.bash, '-n', str(scripts / 'mysql/010-schema.sh')], check=True)
         block_count = 0
         for workflow in (backend / '.github/workflows/docker-build.yml', frontend / '.github/workflows/docker-build.yml'):
             lines = workflow.read_text(encoding='utf-8').splitlines()

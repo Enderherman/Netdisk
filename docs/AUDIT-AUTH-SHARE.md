@@ -2,9 +2,11 @@
 
 审计日期：2026-10-04。以下结论来自初始代码的静态审计，**不表示所有问题都已通过运行复现**。行号对应修复前的代码。未连接原配置中的数据库、Redis、邮箱或 QQ 服务。后续修复和自动测试以 UPDATELOG 及测试报告为准。
 
+本文路径保留审计时的旧布局 `netdisk/src/`。从 1.1.0 起源码位于仓库根目录 `src/`，对应当前 Java 前缀为 `src/main/java/top/enderherman/netdisk/`；以下旧行号和原始缺陷记录不表示当前实现仍相同。
+
 ## 优先修复的问题
 
-| 优先级 | 位置（相对 `netdisk/src/main/java/top/enderherman/netdisk`） | 触发条件及影响 | 建议验证 |
+| 优先级 | 位置（旧布局，相对 `netdisk/src/main/java/top/enderherman/netdisk`） | 触发条件及影响 | 建议验证 |
 | --- | --- | --- | --- |
 | P1 | `controller/WebShareController.java:119-156` | 提取合法分享后，预览、视频、下载及目录路径接口只使用分享者 userId，没有约束文件属于分享根目录。已知同一分享者其他 fileId 时可能读取未分享内容。 | 分享目录内允许；同用户其他目录、其他用户文件、已删除文件拒绝。 |
 | P1 | `controller/WebShareController.java:217-224` | 分享校验仅使用 session 快照，分享者取消分享后旧会话继续生效。 | 提取后取消，再列举、预览、创建下载、保存全部失败。 |

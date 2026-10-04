@@ -4,13 +4,13 @@ ARG JAVA_IMAGE=eclipse-temurin:17-jre-jammy
 
 FROM ${MAVEN_IMAGE} AS build
 WORKDIR /build
-COPY netdisk/pom.xml ./pom.xml
+COPY pom.xml ./pom.xml
 RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
-COPY netdisk/src ./src
+COPY src ./src
 RUN mvn --batch-mode --no-transfer-progress -DskipTests package \
     && mkdir /out \
     && cp target/netdisk-*.jar /out/netdisk.jar
-COPY deploy/Healthcheck.java /health/Healthcheck.java
+COPY scripts/Healthcheck.java /health/Healthcheck.java
 RUN javac --release 17 -d /health/classes /health/Healthcheck.java
 
 FROM ${JAVA_IMAGE} AS runtime

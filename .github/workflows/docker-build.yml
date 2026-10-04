@@ -14,7 +14,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build Java 17 runtime image
-        run: docker build --pull --file deploy/backend.Dockerfile --tag netdisk-backend:ci .
+        run: docker build --pull --file Dockerfile --tag netdisk-backend:ci .
       - name: Inspect packaged JAR, runtime user, and health probe
         run: |
           docker create --name netdisk-backend-artifact-ci netdisk-backend:ci

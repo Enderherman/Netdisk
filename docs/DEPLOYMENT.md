@@ -4,16 +4,23 @@
 
 ## 目录与前提
 
-两个仓库默认相邻放置：
+从后端 1.1.0 起，两个仓库默认按以下布局相邻放置。本文命令均在后端仓库根目录执行：
 
 ```text
 workspace/
   Netdisk/
-    database.sql
-    database/migrations/
-    deploy/compose.yaml
-    deploy/backend.Dockerfile
-    deploy/.env.example
+    src/
+    pom.xml
+    sql/init.sql
+    sql/migrations/
+    scripts/Healthcheck.java
+    scripts/validate-config.py
+    scripts/mysql/010-schema.sh
+    Dockerfile
+    .dockerignore
+    compose.yaml
+    .env.example
+    .env.compose.example
   NetdiskWeb/
     Dockerfile
     .dockerignore
@@ -37,38 +44,38 @@ workspace/
 
 以下示例在后端仓库根目录执行。它们是给操作者的部署步骤，本次没有在本机或 NAS 执行这些步骤或导入业务数据库；远端 CI 仅运行临时镜像检查容器。
 
-1. 选择两个仓库已经验证的提交，复制 `deploy/.env.example` 为 `deploy/.env`。
+1. 选择两个仓库已经验证的提交，复制根目录 `.env.compose.example` 为 `.env.compose`。根目录 `.env.example` 仍是直接运行后端的进程环境变量示例，不作为此 Compose 命令的环境文件。
 2. 为 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`REDIS_PASSWORD` 分别填写独立随机密码。示例故意留空，Compose 会拒绝空凭据。可用密码管理器生成，或执行 `openssl rand -hex 32` 生成十六进制密码。
 3. 确认 `COMPOSE_PROJECT_NAME` 没有与已有项目重名；默认只发布 `127.0.0.1:8080`。数据库、Redis 和后端均不发布宿主机端口。
-4. 若前端仓库不相邻，调整 `NETDISK_WEB_CONTEXT`，路径相对于 `deploy/compose.yaml`，也可填写绝对路径。
+4. 前端构建目录 `NETDISK_WEB_CONTEXT` 默认是 `../NetdiskWeb`，相对于根目录 `compose.yaml`。若仓库不相邻，应调整该值，也可填写绝对路径。
 5. 配置实际公开地址、HTTPS、SMTP 和管理员邮箱，见下文。
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml config --quiet
-docker compose --env-file deploy/.env -f deploy/compose.yaml build backend frontend
-docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
-docker compose --env-file deploy/.env -f deploy/compose.yaml ps
+docker compose --env-file .env.compose -f compose.yaml config --quiet
+docker compose --env-file .env.compose -f compose.yaml build backend frontend
+docker compose --env-file .env.compose -f compose.yaml up -d
+docker compose --env-file .env.compose -f compose.yaml ps
 ```
 
 默认本机访问 `http://127.0.0.1:8080`。后台健康检查返回正常后前端才启动。单独构建时：
 
 ```sh
 # 后端仓库根目录
-docker build -f deploy/backend.Dockerfile -t netdisk-backend:local .
+docker build -f Dockerfile -t netdisk-backend:local .
 
 # 前端仓库根目录
 docker build -t netdisk-web:local .
 ```
 
-后端镜像构建编译测试源码但使用 `-DskipTests` 跳过测试执行；发布前仍应在独立环境运行项目测试。前端镜像会运行类型检查和生产构建，也不替代前端组件测试或浏览器验收。
+后端镜像构建编译测试源码但使用 `-DskipTests` 跳过测试执行；发布前仍应在后端仓库根目录运行 `mvn clean verify`，测试仅使用独立环境。前端镜像会运行类型检查和生产构建，也不替代前端组件测试或浏览器验收。
 
 ## 数据库初始化与迁移
 
-首次启动空的 MySQL 数据卷时，官方入口创建 `netdisk` 数据库和最小业务账户，再执行 `deploy/mysql/010-schema.sh`。该脚本读取仓库根目录的 `database.sql`，只去掉重复的 `CREATE DATABASE` 和 `USE` 两行，在已创建的数据库内建表，因此不会因 `MYSQL_DATABASE` 已建库而失败。
+首次启动空的 MySQL 数据卷时，官方入口创建 `netdisk` 数据库和最小业务账户，再执行由 `scripts/mysql/010-schema.sh` 挂载的初始化脚本。该脚本读取由 `sql/init.sql` 挂载的 SQL，只去掉重复的 `CREATE DATABASE` 和 `USE` 两行，在已创建的数据库内建表，因此不会因 `MYSQL_DATABASE` 已建库而失败。
 
-根 SQL 已包含 `password VARCHAR(255)`、`session_version`、邮件验证码 `purpose`。**新部署不要再执行账户安全迁移。**
+初始化 SQL 已包含 `password VARCHAR(255)`、`session_version`、邮件验证码 `purpose`。**新部署不要再执行账户安全迁移。**
 
-`deploy/.gitattributes` 固定初始化 shell 脚本使用 LF，避免 Windows 检出后产生不可执行的 CRLF shebang。
+初始化 shell 脚本应由仓库属性配置固定为 LF，避免 Windows 检出后产生不可执行的 CRLF shebang。
 
 已有 MySQL 数据卷不会重新执行初始化目录中的脚本；更新镜像也不会自动迁移数据库。旧数据库升级前先备份，并检查：
 
@@ -80,7 +87,7 @@ WHERE table_schema = 'netdisk'
     OR (table_name = 'email_code' AND column_name = 'purpose'));
 ```
 
-确实缺少安全字段的旧库，按 `database/migrations/20261004_account_security.sql` 执行一次。该迁移不是重复执行脚本，也不应套用于已经升级的数据库。部署配置不擅自修改已有数据库，不内置测试账号或默认管理员。
+确实缺少安全字段的旧库，按 `sql/migrations/20261004_account_security.sql` 执行一次。该迁移不是重复执行脚本，也不应套用于已经升级的数据库。部署配置不擅自修改已有数据库，不内置测试账号或默认管理员。
 
 管理员邮箱由 `NETDISK_ADMIN_EMAILS` 配置，逗号分隔。配置名单本身不会创建用户；通过正常注册等受支持流程创建对应账号后才获得管理员角色。首次注册需要可用的邮箱验证服务。
 
@@ -139,31 +146,33 @@ QQ 回调使用精确 location，另外关闭访问日志，并通过通用片�
 
 ## 一致备份
 
-先记录两个 Git 提交、镜像摘要、Compose 渲染配置和 `.env`，妥善保护包含凭据的备份。选择维护窗口停止前后端写入，再保存数据库和文件卷的一致快照。
+先记录两个 Git 提交、镜像摘要、Compose 渲染配置和 `.env.compose`，妥善保护包含凭据的备份。选择维护窗口停止前后端写入，再保存数据库和文件卷的一致快照。
 
 ```sh
-docker compose --env-file deploy/.env -f deploy/compose.yaml stop frontend backend
-mkdir -p deploy/backups/2026-10-05
-docker compose --env-file deploy/.env -f deploy/compose.yaml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump --user=root --single-transaction --routines --triggers --events --no-tablespaces netdisk' > deploy/backups/2026-10-05/database.sql
-docker compose --env-file deploy/.env -f deploy/compose.yaml stop redis
+docker compose --env-file .env.compose -f compose.yaml stop frontend backend
+mkdir -p backups/2026-10-05
+docker compose --env-file .env.compose -f compose.yaml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump --user=root --single-transaction --routines --triggers --events --no-tablespaces netdisk' > backups/2026-10-05/database.sql
+docker compose --env-file .env.compose -f compose.yaml stop redis
 ```
 
 确认实际卷名称后，用只读挂载导出；以下卷名适用于默认项目名，改过项目名必须同步替换。先执行 `docker volume inspect` 确认它们存在且属于当前部署，避免将拼错名称生成的空卷当成备份。
 
 ```sh
 docker volume inspect netdisk_files-data netdisk_redis-data
-docker run --rm --network none --mount type=volume,source=netdisk_files-data,target=/source,readonly --entrypoint tar redis:7.4-alpine -C /source -czf - . > deploy/backups/2026-10-05/files.tgz
-docker run --rm --network none --mount type=volume,source=netdisk_redis-data,target=/source,readonly --entrypoint tar redis:7.4-alpine -C /source -czf - . > deploy/backups/2026-10-05/redis.tgz
-docker compose --env-file deploy/.env -f deploy/compose.yaml up -d redis backend frontend
+docker run --rm --network none --mount type=volume,source=netdisk_files-data,target=/source,readonly --entrypoint tar redis:7.4-alpine -C /source -czf - . > backups/2026-10-05/files.tgz
+docker run --rm --network none --mount type=volume,source=netdisk_redis-data,target=/source,readonly --entrypoint tar redis:7.4-alpine -C /source -czf - . > backups/2026-10-05/redis.tgz
+docker compose --env-file .env.compose -f compose.yaml up -d redis backend frontend
 ```
 
 这些导出容器仅是未来备份步骤，本次没有运行。Windows 操作者应使用能保持二进制重定向的环境执行 tar 输出命令，或使用 Docker/NAS 的卷快照能力；不要让旧版 PowerShell 将归档流当文本转码。校验 SQL 文件非空、归档可列出并生成校验和，将备份保存到不同故障域。
 
 ## 升级与恢复
 
+从 1.0.0 及以前的目录布局升级时，直接使用 Maven/JAR 的安装需先确认 `NETDISK_STORAGE`。Maven 运行目录从旧 `netdisk/` 变为仓库根目录，默认 `./data/` 会解析到不同位置；已有数据应使用原存储目录的绝对路径并保留末尾 `/`。仓库布局迁移不自动搬迁数据，也不能据新相对目录为空就判定文件丢失。容器内的 `/data/netdisk` 挂载和既有卷语义不因此改变，不能为目录整理删除或重建业务卷。
+
 1. 先完成上面的数据库、文件、Redis 一致备份，保留旧镜像；检查新版本迁移说明。
 2. 在维护窗口按需执行且只执行一次数据库迁移。构建已验证提交对应的前后端镜像。
-3. 使用同一项目名和同一数据卷运行 `docker compose ... up -d --build backend frontend`；不要删除卷，也不要对已有数据重放完整 `database.sql`。
+3. 使用同一项目名和同一数据卷运行 `docker compose --env-file .env.compose -f compose.yaml up -d --build backend frontend`；不要删除卷，也不要对已有数据重放完整 `sql/init.sql`。
 4. 检查容器健康与日志，逐项验证登录、容量、上传/续传、下载 Range、ZIP、分享/回收和邮件配置。单纯健康检查不是业务验收。
 5. 回滚先停止写入。若模式未变化，可换回旧应用镜像；数据库已经迁移时，不能只降级 jar，必须评估兼容性或从同一时间点恢复数据库和文件备份。
 6. 先在**独立项目名和独立端口**创建恢复验证环境，导入 SQL、恢复文件和 Redis 归档，核对 UID/GID、文件数量和哈希后再安排正式切换。已有浏览器 HTTP 会话通常会因服务重启失效，这是预期行为。
@@ -172,7 +181,9 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up -d redis backend
 
 ## 本次验证范围（2026-10-05）
 
-执行 `python deploy/validate-config.py` 可在不启动任何服务的情况下，用临时非秘密凭据检查模板的 Compose 渲染、端口/网络/挂载边界和代理关键配置，不读取真实 `deploy/.env`。有 Java 17+ 编译器时也编译健康探针，可用 `--javac /absolute/path/to/javac` 指定编译器；可用 `--bash /absolute/path/to/bash` 对初始化与 CI 脚本做语法检查。
+执行 `python scripts/validate-config.py` 可在不启动任何服务的情况下，用临时非秘密凭据检查模板的 Compose 渲染、端口/网络/挂载边界和代理关键配置，不读取真实 `.env.compose`。有 Java 17+ 编译器时也编译 `scripts/Healthcheck.java` 健康探针，可用 `--javac /absolute/path/to/javac` 指定编译器；可用 `--bash /absolute/path/to/bash` 对初始化与 CI 脚本做语法检查。
+
+以下记录保留 1.0.0 及以前已完成的配置和镜像验证；1.1.0 的命令与目录已按本文新布局调整，迁移后的复核结果以该版本发布记录和对应 CI 为准。
 
 本次已通过 Docker Compose 2.39.1 配置解析、空凭据拒绝、隔离网络/端口/非 root 配置检查、Java 17 健康探针编译及 Nginx 关键指令静态检查。初始化脚本与 3 段 CI shell 通过 Bash 语法检查，JAR 检查脚本通过 Python 语法解析；所用六种官方基础镜像标签已查询存在。
 

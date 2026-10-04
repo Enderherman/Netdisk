@@ -7,6 +7,6 @@ test "${MYSQL_DATABASE}" = "netdisk"
 sed \
   -e '/^[[:space:]]*create database netdisk;[[:space:]]*$/d' \
   -e '/^[[:space:]]*use netdisk;[[:space:]]*$/d' \
-  /opt/netdisk-schema/database.sql \
+  /opt/netdisk-schema/init.sql \
   | MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" mysql --protocol=socket --user=root \
       --default-character-set=utf8mb4 --database="${MYSQL_DATABASE}"

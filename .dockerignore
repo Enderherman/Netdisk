@@ -1,0 +1,9 @@
+# Allowlist: do not send local data, credentials, old builds or Git history.
+**
+!pom.xml
+!src/
+!src/**
+!Dockerfile
+!.dockerignore
+!scripts/
+!scripts/Healthcheck.java

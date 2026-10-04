@@ -6,7 +6,7 @@
 
 初次审计为静态代码审查，未连接生产数据库，未启动外部服务，未对真实数据执行删除或攻击请求。表中“复现条件”是由代码推导的测试场景，并非声称已经运行成功。修复后的自动化验证记录见本文末尾；其余问题须由相应功能的回归测试证明。
 
-Java 路径前缀：`netdisk/src/main/java/top/enderherman/netdisk/`。Mapper 路径前缀：`netdisk/src/main/resources/top/enderherman/netdisk/mapper/`。
+审计时的旧布局：Java 路径前缀为 `netdisk/src/main/java/top/enderherman/netdisk/`，Mapper 前缀为 `netdisk/src/main/resources/top/enderherman/netdisk/mapper/`。从 1.1.0 起对应当前前缀分别为 `src/main/java/top/enderherman/netdisk/` 和 `src/main/resources/top/enderherman/netdisk/mapper/`，Maven 从仓库根目录运行；本文保留旧版本行号作为历史证据。
 
 ## 静态发现
 
