@@ -107,6 +107,19 @@ public class ShareAccessService {
                 }
             }
         }
+        // 原始数据库行可以在其所有者永久删除后消失；仍存在的副本保留原始存储路径。
+        FileQuery retained = new FileQuery();
+        retained.setUserId(share.getUserId());
+        retained.setFilePathFuzzy(originalId);
+        retained.setDelFlag(2);
+        retained.setStatus(2);
+        retained.setFileCategory(1);
+        for (FileInfo copy : fileService.findListByParam(retained)) {
+            if (copy.getFilePath() == null || !top.enderherman.netdisk.common.utils.StringUtils
+                    .getFileNameWithoutSuffix(copy.getFilePath()).endsWith(originalId)) continue;
+            try { return requireSharedFile(share, copy.getFileId()); }
+            catch (BusinessException ignored) { /* 只能通过分享树内的副本授权。 */ }
+        }
         throw new BusinessException(ResponseCodeEnum.CODE_600);
     }
 

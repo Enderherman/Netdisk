@@ -29,6 +29,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class ACommonFileController extends ABaseController {
+    @Resource
+    private top.enderherman.netdisk.service.FileContentService contentService;
+    @Resource
+    private top.enderherman.netdisk.service.UserService contentUserService;
+
+    private HttpServletRequest currentRequest() {
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        return attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet ? servlet.getRequest() : null;
+    }
+
 
 
     @Resource
@@ -50,16 +60,20 @@ public class ACommonFileController extends ABaseController {
      * @param imageName   缩略图名称
      */
     protected void getImage(HttpServletResponse response, String imageFolder, String imageName) {
-        if (StringUtils.isEmpty(imageFolder) || StringUtils.isBlank(imageName) || !StringUtils.pathIsOk(imageFolder) || !StringUtils.pathIsOk(imageName)) {
-            return;
-        }
-        String imageSuffix = StringUtils.getFileSuffix(imageName);
-        String filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + imageFolder + "/" + imageName;
-        imageSuffix = imageSuffix.replace(".", "");
-        String contentType = "image/" + imageSuffix;
-        response.setContentType(contentType);
-        response.setHeader("Cache-Control", "max-age=2592000");
-        writeFile(response, filePath);
+        HttpServletRequest request = currentRequest();
+        var session = request == null ? null : request.getSession(false);
+        var user = session == null ? null : getUserInfoFromSession(session);
+        if (user == null) throw new BusinessException(ResponseCodeEnum.CODE_901);
+        if (imageFolder == null || !imageFolder.matches("[0-9]{6}") || imageName == null
+                || !imageName.matches("[A-Za-z0-9_.-]+")) throw new BusinessException(ResponseCodeEnum.CODE_600);
+        String path = imageFolder + "/" + imageName;
+        FileQuery query = new FileQuery();
+        query.setUserId(user.getUserId());
+        query.setFileCover(path);
+        query.setDelFlag(2);
+        query.setStatus(2);
+        if (fileInfoService.findCountByParam(query) == 0) throw new BusinessException(ResponseCodeEnum.CODE_404);
+        contentService.sendPath(request, response, path, imageName, false);
     }
 
 
@@ -71,58 +85,39 @@ public class ACommonFileController extends ABaseController {
      * @param userId   用户id
      */
     protected void getFile(HttpServletResponse response, String fileId, String userId) {
-        String filePath = null;
-        //视频的第二次读取已经变成ts的请求
+        if (fileId == null || !fileId.matches("[A-Za-z0-9]{1,10}(?:_[0-9]+\\.ts)?")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         if (fileId.endsWith(".ts")) {
-            //获取文件Id
-            String[] tsArray = fileId.split("_");
-            String realFileId = tsArray[0];
-            //根据原文件的id查询出一个文件集合
-            FileInfo fileInfo = fileInfoService.getFileInfoByFileIdAndUserId(realFileId, userId);
-            if (fileInfo == null) {
-
-                //分享的视频，ts路径记录的是原视频的id,这里通过id直接取出原视频
-                FileQuery fileInfoQuery = new FileQuery();
-                fileInfoQuery.setFileId(realFileId);
-                List<FileInfo> fileInfoList = fileInfoService.findListByParam(fileInfoQuery);
-                fileInfo = fileInfoList.get(0);
-                if (fileInfo == null) {
-                    return;
-                }
-
-                //根据当前用户id和路径去查询当前用户是否有该文件，如果没有直接返回
-                fileInfoQuery = new FileQuery();
-                fileInfoQuery.setFilePath(fileInfo.getFilePath());
-                fileInfoQuery.setUserId(userId);
-                Integer count = fileInfoService.findCountByParam(fileInfoQuery);
-                if (count == 0) {
-                    return;
+            String originalId = fileId.substring(0, fileId.indexOf('_'));
+            FileInfo file = fileInfoService.getFileInfoByFileIdAndUserId(originalId, userId);
+            if (file == null || !Integer.valueOf(2).equals(file.getDelFlag()) || !Integer.valueOf(2).equals(file.getStatus())) {
+                file = null;
+                FileQuery copies = new FileQuery();
+                copies.setUserId(userId); copies.setFilePathFuzzy(originalId);
+                copies.setDelFlag(2); copies.setStatus(2); copies.setFileCategory(1);
+                for (FileInfo candidate : fileInfoService.findListByParam(copies)) {
+                    if (candidate.getFilePath() != null
+                            && StringUtils.getFileNameWithoutSuffix(candidate.getFilePath()).endsWith(originalId)) {
+                        file = candidate; break;
+                    }
                 }
             }
-
-            String fileName = fileInfo.getFilePath();
-            fileName = StringUtils.getFileNameWithoutSuffix(fileName) + "/" + fileId;
-            filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + fileName;
-
+            contentService.requireUsable(file);
+            if (!Integer.valueOf(1).equals(file.getFileCategory())) throw new BusinessException(ResponseCodeEnum.CODE_600);
+            contentService.sendPath(currentRequest(), response,
+                    StringUtils.getFileNameWithoutSuffix(file.getFilePath()) + "/" + fileId, fileId, false);
         } else {
-            FileInfo fileInfo = fileInfoService.getFileInfoByFileIdAndUserId(fileId, userId);
-            if (fileInfo == null) {
-                return;
-            }
-            //视频文件读取.m3u8文件
-            if (FileCategoryEnum.VIDEO.getCategory().equals(fileInfo.getFileCategory())) {
-                //重新设置文件路径
-                String fileNameNoSuffix = StringUtils.getFileNameWithoutSuffix(fileInfo.getFilePath());
-                filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + fileNameNoSuffix + "/" + Constants.M3U8_NAME;
-            } else {            //不是视频直接取文件
-                filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + fileInfo.getFilePath();
+            FileInfo file = fileInfoService.getFileInfoByFileIdAndUserId(fileId, userId);
+            contentService.requireUsable(file);
+            if (FileCategoryEnum.VIDEO.getCategory().equals(file.getFileCategory())) {
+                contentService.sendPath(currentRequest(), response,
+                        StringUtils.getFileNameWithoutSuffix(file.getFilePath()) + "/" + Constants.M3U8_NAME,
+                        Constants.M3U8_NAME, false);
+            } else {
+                contentService.send(currentRequest(), response, file, false);
             }
         }
-        File file = new File(filePath);
-        if (!file.exists()) {
-            return;
-        }
-        writeFile(response, filePath);
     }
 
     //获取当前目录
@@ -160,17 +155,15 @@ public class ACommonFileController extends ABaseController {
      */
     protected BaseResponse<?> createDownloadUrl(String fileId, String userId) {
         FileInfo fileInfo = fileInfoService.getFileInfoByFileIdAndUserId(fileId, userId);
-        if (fileInfo == null) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
-        if (FileFolderTypeEnum.FOLDER.getType().equals(fileInfo.getFolderType())) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
+        contentService.requireUsable(fileInfo);
+        contentService.resolve(fileInfo.getFilePath());
 
         //token
         String code = StringUtils.getRandomString(Constants.LENGTH_50);
         DownloadFileDto fileDto = new DownloadFileDto();
         fileDto.setDownloadCode(code);
+        fileDto.setFileId(fileId);
+        fileDto.setUserId(userId);
         fileDto.setFileName(fileInfo.getFileName());
         fileDto.setFilePath(fileInfo.getFilePath());
         redisComponent.saveDownloadCode(code, fileDto);
@@ -192,18 +185,19 @@ public class ACommonFileController extends ABaseController {
                 throw new BusinessException(ResponseCodeEnum.CODE_902);
             }
         }
-        String filePath = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + downloadFileDto.getFilePath();
-        String fileName = downloadFileDto.getFileName();
-        response.setContentType("application/x-msdownload; charset=UTF-8");
-        String userAgent = request.getHeader("User-Agent");
-        if (userAgent != null && userAgent.toLowerCase(java.util.Locale.ROOT).contains("msie")){
-            //IE浏览器
-            fileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
-        }else {
-            fileName = new String(fileName.getBytes(StandardCharsets.UTF_8),"ISO8859-1");
+        if (downloadFileDto.getUserId() == null || downloadFileDto.getFileId() == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        response.setHeader("Content-Disposition","attachment;filename=\"" + fileName + "\"");
-        writeFile(response,filePath);
+        var owner = contentUserService.getUserInfoByUserId(downloadFileDto.getUserId());
+        if (owner == null || !Integer.valueOf(1).equals(owner.getStatus())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_901);
+        }
+        FileInfo current = fileInfoService.getFileInfoByFileIdAndUserId(downloadFileDto.getFileId(), downloadFileDto.getUserId());
+        contentService.requireUsable(current);
+        if (!java.util.Objects.equals(current.getFilePath(), downloadFileDto.getFilePath())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        contentService.send(request, response, current, true);
     }
 
 }
