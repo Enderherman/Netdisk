@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
@@ -55,6 +56,8 @@ public class FileUploadService {
     @Resource private AppConfig appConfig;
     @Resource private ObjectMapper objectMapper;
     @Resource private PlatformTransactionManager transactionManager;
+    @Value("${netdisk.upload.task-ttl-hours:24}") private long taskTtlHours;
+    @Value("${netdisk.upload.receipt-ttl-hours:168}") private long receiptTtlHours;
 
     public UploadResultDto upload(SessionWebUserDto user, String requestedId, MultipartFile part,
                                   String name, String parent, String md5, Integer index, Integer chunks) {
@@ -156,6 +159,7 @@ public class FileUploadService {
             manifest.md5 = md5;
             manifest.chunks = chunks;
             manifest.createdAt = System.currentTimeMillis();
+            manifest.updatedAt = manifest.createdAt;
             saveManifest(task, manifest);
         } else {
             manifest = objectMapper.readValue(task.resolve("manifest.json").toFile(), Manifest.class);
@@ -163,6 +167,16 @@ public class FileUploadService {
                     || !parent.equals(manifest.filePid) || !md5.equals(manifest.md5) || chunks != manifest.chunks) {
                 throw new BusinessException("上传任务参数已改变，请重新开始上传");
             }
+        }
+        verifyIdentity(manifest, userId, id);
+        if (manifest.terminalState != null) throw new BusinessException("上传任务已取消或过期，请重新开始");
+        if (manifest.completedStatus != null && System.currentTimeMillis() - lastActivity(manifest) >= receiptTtlMillis()) {
+            throw new BusinessException("上传回执已过期，请查询网盘中的原件");
+        }
+        if (manifest.completedStatus == null && fileMapper.selectByFileIdAndUserId(id, userId) == null
+                && System.currentTimeMillis() - lastActivity(manifest) >= taskTtlMillis()) {
+            closeTask(root, task, manifest, "expired");
+            throw new BusinessException("上传任务已过期，请重新开始");
         }
         clearScratch(root, task);
         Path incoming = Files.createTempFile(task, "incoming-", ".part");
@@ -201,6 +215,7 @@ public class FileUploadService {
                 updateSpace(userId, used + copy.getFileSize());
                 manifest.received.put(index, incomingInfo);
                 manifest.completedStatus = UploadStatusEnum.UPLOAD_SECONDS.getCode();
+                manifest.updatedAt = System.currentTimeMillis();
                 attempt.preparedCompletion = true;
                 saveManifest(task, manifest);
                 return result(id, manifest.completedStatus);
@@ -219,6 +234,7 @@ public class FileUploadService {
             Files.move(incoming, chunkPath, StandardCopyOption.ATOMIC_MOVE);
         }
         manifest.received.put(index, incomingInfo);
+        manifest.updatedAt = System.currentTimeMillis();
         saveManifest(task, manifest);
         for (int chunk = 0; chunk < chunks; chunk++) {
             Chunk info = manifest.received.get(chunk);
@@ -276,6 +292,7 @@ public class FileUploadService {
         fileMapper.insert(file);
         updateSpace(userId, used + merged.size);
         manifest.completedStatus = UploadStatusEnum.UPLOAD_FINISH.getCode();
+        manifest.updatedAt = System.currentTimeMillis();
         attempt.preparedCompletion = true;
         saveManifest(task, manifest);
         return result(id, manifest.completedStatus);
@@ -431,7 +448,7 @@ public class FileUploadService {
         try (InputStream in = Files.newInputStream(path)) { return DigestUtils.md5Hex(in); }
     }
 
-    private void saveManifest(Path task, Manifest manifest) throws IOException {
+    void saveManifest(Path task, Manifest manifest) throws IOException {
         Path temporary = Files.createTempFile(task, "manifest-", ".part");
         try {
             objectMapper.writeValue(temporary.toFile(), manifest);
@@ -439,14 +456,14 @@ public class FileUploadService {
         } finally { Files.deleteIfExists(temporary); }
     }
 
-    private Path storageRoot() throws IOException {
+    Path storageRoot() throws IOException {
         if (StringUtils.isEmpty(appConfig.getProjectFolder())) throw new BusinessException("未配置文件存储目录");
         Path root = Path.of(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE).toAbsolutePath().normalize();
         Files.createDirectories(root);
         return root.toRealPath();
     }
 
-    private Path safe(Path root, String relative) throws IOException {
+    Path safe(Path root, String relative) throws IOException {
         Path input = Path.of(relative);
         Path path = root.resolve(input).normalize();
         if (input.isAbsolute() || path.equals(root) || !path.startsWith(root)) throw new IOException("路径越过存储目录");
@@ -513,6 +530,116 @@ public class FileUploadService {
         UploadResultDto result = new UploadResultDto(); result.setFileId(id); result.setStatus(status); return result;
     }
 
+    long taskTtlMillis() { return ttlMillis(taskTtlHours); }
+    long receiptTtlMillis() { return ttlMillis(receiptTtlHours); }
+    private long ttlMillis(long hours) {
+        if (hours < 1 || hours > 8760) throw new IllegalStateException("上传任务 TTL 必须为 1 至 8760 小时");
+        return hours * 3_600_000L;
+    }
+    long lastActivity(Manifest manifest) { return manifest.updatedAt > 0 ? manifest.updatedAt : manifest.createdAt; }
+
+    Manifest readManifest(Path root, Path task, String userId, String id) throws IOException {
+        Path path = safe(root, root.relativize(task.resolve("manifest.json")).toString());
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw new BusinessException("上传任务不存在");
+        Manifest manifest = objectMapper.readValue(path.toFile(), Manifest.class);
+        verifyIdentity(manifest, userId, id);
+        return manifest;
+    }
+
+    private void verifyIdentity(Manifest manifest, String userId, String id) {
+        if (!userId.equals(manifest.userId) || !id.equals(manifest.fileId) || manifest.createdAt <= 0
+                || manifest.chunks < 1 || manifest.chunks > MAX_CHUNKS || manifest.received == null
+                || manifest.md5 == null || !manifest.md5.matches("[a-fA-F0-9]{32}")
+                || (manifest.completedStatus != null && !Set.of("upload_finish", "upload_seconds").contains(manifest.completedStatus))
+                || (manifest.terminalState != null && !Set.of("cancelled", "expired").contains(manifest.terminalState))
+                || (manifest.completedStatus != null && manifest.terminalState != null)) {
+            throw new BusinessException("上传任务凭据无效");
+        }
+        FileNames.requireValid(manifest.fileName);
+        for (var entry : manifest.received.entrySet()) {
+            Chunk chunk = entry.getValue();
+            if (entry.getKey() == null || entry.getKey() < 0 || entry.getKey() >= manifest.chunks || chunk == null
+                    || chunk.size < 0 || chunk.size > MAX_CHUNK_BYTES || chunk.md5 == null || !chunk.md5.matches("[a-fA-F0-9]{32}")) {
+                throw new BusinessException("上传分片凭据无效");
+            }
+        }
+    }
+
+    @FunctionalInterface interface TaskWork<T> { T run(Path root, Path task, Manifest manifest) throws IOException; }
+
+    /** 与上传保持相同锁顺序：进程内锁、任务文件锁、用户数据库行锁。 */
+    <T> T withLockedTask(String userId, String id, TaskWork<T> work) {
+        if (userId == null || !userId.matches("[A-Za-z0-9]{1,15}") || id == null || !id.matches("[A-Za-z0-9]{10}")) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        ReentrantLock stripe = LOCKS[Math.floorMod((userId + id).hashCode(), LOCKS.length)];
+        stripe.lock();
+        try {
+            Path root = storageRoot();
+            Path task = safe(root, "temp/" + userId + "/" + id);
+            if (!Files.isDirectory(task, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.isRegularFile(task.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) {
+                throw new BusinessException("上传任务不存在");
+            }
+            Path lock = safe(root, root.relativize(task.resolve("task.lock")).toString());
+            T result;
+            try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                 FileLock ignored = channel.lock()) {
+                TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+                transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                result = transaction.execute(status -> {
+                    if (fileMapper.lockUserForStorage(userId) == null) throw new BusinessException(ResponseCodeEnum.CODE_901);
+                    try { return work.run(root, task, readManifest(root, task, userId, id)); }
+                    catch (IOException ex) { throw new UncheckedIOException(ex); }
+                });
+            }
+            // 锁文件关闭后才删除空任务目录；不递归，也不访问原件目录。
+            if (!Files.exists(task.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) {
+                try { Files.deleteIfExists(lock); Files.deleteIfExists(task); }
+                catch (IOException ex) { log.warn("回执已清理，任务空目录暂无法删除：{}", task, ex); }
+            }
+            return result;
+        } catch (IOException | UncheckedIOException ex) {
+            throw new BusinessException("无法读取或清理上传任务，请稍后重试", ex);
+        } finally { stripe.unlock(); }
+    }
+
+    /** 先验证全部目标，再写终止凭据；失败时保留凭据便于再次清理。 */
+    void closeTask(Path root, Path task, Manifest manifest, String state) throws IOException {
+        List<Path> content = managedTaskContent(root, task);
+        if (manifest.terminalState == null) {
+            manifest.terminalState = state;
+            manifest.updatedAt = System.currentTimeMillis();
+            saveManifest(task, manifest);
+        }
+        for (Path path : content) Files.deleteIfExists(path);
+        manifest.received.clear();
+        saveManifest(task, manifest);
+    }
+
+    void deleteReceipt(Path root, Path task) throws IOException {
+        for (Path path : managedTaskContent(root, task)) Files.deleteIfExists(path);
+        Files.delete(safe(root, root.relativize(task.resolve("manifest.json")).toString()));
+    }
+
+    private List<Path> managedTaskContent(Path root, Path task) throws IOException {
+        List<Path> result = new ArrayList<>();
+        try (Stream<Path> entries = Files.list(task)) {
+            for (Path path : entries.toList()) {
+                String name = path.getFileName().toString();
+                if (name.equals("manifest.json") || name.equals("task.lock")) continue;
+                safe(root, root.relativize(path).toString());
+                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                        || !(name.matches("[0-9]+\\.chunk") || name.equals("assembly.part")
+                        || name.matches("(?:incoming|manifest)-.*\\.part"))) {
+                    throw new IOException("任务目录含未知对象，拒绝递归删除");
+                }
+                result.add(path);
+            }
+        }
+        return result;
+    }
+
     @Data public static class Manifest {
         private String userId;
         private String fileId;
@@ -521,6 +648,8 @@ public class FileUploadService {
         private String md5;
         private int chunks;
         private long createdAt;
+        private long updatedAt;
+        private String terminalState;
         private String completedStatus;
         private Map<Integer, Chunk> received = new TreeMap<>();
     }
