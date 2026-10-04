@@ -234,11 +234,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public SessionWebUserDto qqLogin(String code) {
-        throw new BusinessException("QQ 登录尚未启用，请使用邮箱登录");
-    }
-
-    @Override
     public void updateUserStatus(String userId, Integer status) {
         if (status == null || (status != 0 && status != 1)) {
             throw new BusinessException(ResponseCodeEnum.CODE_600);

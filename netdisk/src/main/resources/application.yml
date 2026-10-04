@@ -66,6 +66,7 @@ netdisk:
     allowed-origins: ${NETDISK_ALLOWED_ORIGINS:}
 # qq登陆相关
 qq:
+  enabled: ${NETDISK_QQ_ENABLED:false}
   app:
     id: ${NETDISK_QQ_APP_ID:}
     key: ${NETDISK_QQ_APP_KEY:}

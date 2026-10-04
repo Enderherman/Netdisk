@@ -39,8 +39,6 @@ public interface UserService {
 
     void updateUserByUserId(User user, String userId);
 
-    SessionWebUserDto qqLogin(String code);
-
     /**
      * 更改用户状态
      */

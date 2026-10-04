@@ -21,6 +21,8 @@ public interface UserMapper<T, P> extends BaseMapper<T, P> {
      */
     T selectByUserId(@Param("userId") String userId);
 
+    T selectByQqOpenId(@Param("openId") String openId);
+
     Integer upgradePassword(@Param("userId") String userId, @Param("oldPassword") String oldPassword,
                             @Param("newPassword") String newPassword);
 

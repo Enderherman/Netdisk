@@ -332,4 +332,7 @@
         update user_info set status=#{status},session_version=session_version+1
         where user_id=#{userId}
     </update>
+    <select id="selectByQqOpenId" resultMap="base_result_map">
+        select <include refid="base_column_list"/> from user_info where upper(qq_open_id)=#{openId}
+    </select>
 </mapper>

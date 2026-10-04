@@ -183,6 +183,8 @@ class AccountHttpIntegrationTest {
                 .andExpect(jsonPath("$.data.emailVerificationEnabled").value(true));
         mvc.perform(get("/qqlogin")).andExpect(jsonPath("$.code").value(600));
         mvc.perform(get("/qqlogin/callback").param("code", "ignored").param("state", "ignored"))
+                .andExpect(status().isSeeOther()).andExpect(redirectedUrl("/auth/login?qqError=unavailable"));
+        mvc.perform(post("/qqlogin/callback").param("code", "ignored").param("state", "ignored"))
                 .andExpect(jsonPath("$.code").value(600));
     }
 

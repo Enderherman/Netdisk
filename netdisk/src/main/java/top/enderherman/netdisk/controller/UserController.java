@@ -26,6 +26,8 @@ import top.enderherman.netdisk.common.utils.ImageGenerator;
 import top.enderherman.netdisk.service.UserService;
 import top.enderherman.netdisk.service.AccountSecurityService;
 import top.enderherman.netdisk.service.AccountRateLimiter;
+import top.enderherman.netdisk.service.qq.QQOAuthService;
+import top.enderherman.netdisk.service.qq.QQOAuthFailure;
 import top.enderherman.netdisk.service.AvatarService;
 
 import java.io.File;
@@ -61,6 +63,8 @@ public class UserController extends ABaseController {
     private AccountSecurityService accountSecurityService;
     @Resource
     private AccountRateLimiter accountRateLimiter;
+    @Resource
+    private QQOAuthService qqOAuthService;
     @Resource
     private AvatarService avatarService;
 
@@ -212,25 +216,53 @@ public class UserController extends ABaseController {
         return getSuccessResponse(user);
     }
 
-    @RequestMapping("/qqlogin")
+    @GetMapping("/qqlogin")
     @GlobalInterceptor(checkParams = true, checkLogin = false)
-    public BaseResponse<?> qqLogin(HttpSession session, String callBackUrl) {
-        throw new BusinessException("QQ 登录尚未启用，请使用邮箱登录");
+    public BaseResponse<?> qqLogin() {
+        throw new BusinessException(qqOAuthService.isEnabled() ? "请通过登录页面发起 QQ 授权" : "QQ 登录尚未启用，请使用邮箱登录");
     }
 
-    @RequestMapping("/qqlogin/callback")
-    @GlobalInterceptor(checkParams = true, checkLogin = false)
-    public BaseResponse<?> qqLoginCallback(HttpSession session,
-                                           @VerifyParam(required = true) String code,
-                                           @VerifyParam(required = true) String state) {
-        throw new BusinessException("QQ 登录尚未启用，请使用邮箱登录");
+    @PostMapping("/qqlogin")
+    @GlobalInterceptor(checkLogin = false, checkParams = true)
+    public BaseResponse<?> beginQQLogin(HttpServletRequest request, HttpSession session, @VerifyParam(max = 2048) String callBackUrl,
+                                        HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store"); response.setHeader("Referrer-Policy", "no-referrer");
+        if (qqOAuthService.isEnabled()) accountRateLimiter.requireAllowed("qq-begin-ip", request.getRemoteAddr(), 30, Duration.ofMinutes(15));
+        return getSuccessResponse(qqOAuthService.begin(session, callBackUrl));
+    }
+
+    @RequestMapping(value = "/qqlogin/callback", method = {RequestMethod.GET, RequestMethod.POST})
+    @GlobalInterceptor(checkParams = false, checkLogin = false)
+    public BaseResponse<?> qqLoginCallback(HttpServletRequest request, HttpServletResponse response, HttpSession session,
+                                           String code, String state, String error) {
+        response.setHeader("Cache-Control", "no-store"); response.setHeader("Referrer-Policy", "no-referrer");
+        try {
+            if (qqOAuthService.isEnabled()) accountRateLimiter.requireAllowed("qq-callback-ip", request.getRemoteAddr(), 20, Duration.ofMinutes(15));
+            if (error != null && !error.isBlank()) qqOAuthService.reject(session, state);
+            QQOAuthService.CallbackResult result = qqOAuthService.complete(session, code, state);
+            request.changeSessionId();
+            session.setAttribute(Constants.SESSION_KEY, result.userInfo());
+            if ("GET".equals(request.getMethod())) {
+                response.setStatus(HttpServletResponse.SC_SEE_OTHER);
+                response.setHeader("Location", result.callbackUrl());
+                return null;
+            }
+            return getSuccessResponse(Map.of("callbackUrl", result.callbackUrl(), "userInfo", result.userInfo()));
+        } catch (RuntimeException exception) {
+            if (!"GET".equals(request.getMethod())) throw exception;
+            QQOAuthFailure.Reason reason = exception instanceof QQOAuthFailure failure ? failure.reason()
+                    : exception instanceof BusinessException ? QQOAuthFailure.Reason.failed : QQOAuthFailure.Reason.unavailable;
+            response.setStatus(HttpServletResponse.SC_SEE_OTHER);
+            response.setHeader("Location", "/auth/login?qqError=" + reason.name());
+            return null;
+        }
     }
 
     @GetMapping("/accountCapabilities")
     @GlobalInterceptor(checkLogin = false)
     public BaseResponse<?> accountCapabilities() {
         return getSuccessResponse(Map.of("emailVerificationEnabled", accountSecurityService.isEmailVerificationEnabled(),
-                "qqLoginEnabled", false));
+                "qqLoginEnabled", qqOAuthService.isEnabled()));
     }
 
     private void consumeImageCode(HttpSession session, String key, String supplied) {
