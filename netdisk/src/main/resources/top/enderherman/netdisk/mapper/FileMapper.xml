@@ -585,4 +585,21 @@
     </delete>
 
 
+    <select id="lockUserForStorage" resultType="java.lang.String">
+        select user_id from user_info where user_id = #{userId} for update
+    </select>
+
+    <update id="updateRecycleState">
+        update file_info
+        set del_flag = #{state}, recovery_time = #{recoveryTime}, last_update_time = #{updatedAt}
+        <if test="parent != null">, file_pid = #{parent}</if>
+        where user_id = #{userId}
+        and file_id in
+        <foreach collection="fileIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </update>
+
+    <select id="selectStorageReferencesForUpdate" resultMap="base_result_map">
+        select <include refid="base_column_list"/> from file_info
+        where file_path = #{filePath} for update
+    </select>
 </mapper>
