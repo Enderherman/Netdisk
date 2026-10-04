@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import top.enderherman.netdisk.common.config.SystemConfig;
 import top.enderherman.netdisk.common.constants.Constants;
+import top.enderherman.netdisk.common.exceptions.BusinessException;
+import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
 import top.enderherman.netdisk.common.utils.RedisUtils;
 import top.enderherman.netdisk.entity.dto.DownloadFileDto;
 import top.enderherman.netdisk.entity.dto.UserSpaceDto;
@@ -59,10 +61,14 @@ public class RedisComponent {
             //1.初始化
             userSpaceDto = new UserSpaceDto();
             Long useSpace = fileMapper.selectUseSpace(userId);
+            User user = userMapper.selectByUserId(userId);
+            if (user == null) {
+                throw new BusinessException(ResponseCodeEnum.CODE_901);
+            }
             //2.设置已使用空间
-            userSpaceDto.setUseSpace(useSpace);
+            userSpaceDto.setUseSpace(useSpace == null ? 0L : useSpace);
             //3.设置总空间
-            userSpaceDto.setTotalSpace(getSystemConfig().getUserInitUseSpace() * Constants.MB);
+            userSpaceDto.setTotalSpace(user.getTotalSpace());
 
             redisUtils.setEx(Constants.REDIS_KEY_USER_SPACE_USE + userId, userSpaceDto, Constants.REDIS_KEY_EXPIRES_DAY);
         }

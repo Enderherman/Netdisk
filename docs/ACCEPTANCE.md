@@ -46,3 +46,8 @@ QQ 登录依赖真实第三方应用凭据；邮件投递依赖 SMTP。对未配
 
 - `mvn test`：3 项通过，0 失败，覆盖隔离库结构、匿名文件请求、图片验证码。
 - H2 替代 MySQL；Redis/邮件使用替身；真实依赖联调仍待执行。
+
+### 0.1.1 容量缓存
+
+- `mvn test -Dtest=StorageQuotaCacheTest,NetdiskApplicationTests`：7 项通过。
+- 覆盖缓存过期后的管理员配额、零配额、空用量、已有缓存及已删除用户；Redis 使用替身。
