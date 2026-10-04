@@ -1,5 +1,12 @@
 # 更新日志
 
+## 0.7.2 — 2026-10-05
+
+- 升级官方已发布 Spring Boot 3.5.16、MyBatis starter 3.0.5，保留 Java 17；日志、AOP、Jackson/MySQL 驱动跟随 BOM。
+- 移除未使用 Fastjson、MyBatis-Plus 与 Commons IO，编译器保留参数名，适配新版 MVC 绑定。
+- 分享/下载等随机码改用 SecureRandom；增加 SMTP/SMTPS 超时和 Redis 密码环境配置。
+- 修复 Mockito 5 单元测试注入兼容；未跳过测试。包含新增兼容/部署属性/生产 Redis 序列化测试，全量 `mvn verify` 327 项通过并完成可执行 JAR 打包。
+
 ## 0.7.1 — 2026-10-05
 
 - 已完成上传任务增加当前文件名和目录导航链，解决自动重名、后续改名/移动后按原始任务名称找不到原件的问题。

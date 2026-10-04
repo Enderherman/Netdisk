@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.enderherman.netdisk.common.component.RedisComponent;
 import top.enderherman.netdisk.common.constants.Constants;
 import top.enderherman.netdisk.common.exceptions.BusinessException;
@@ -28,6 +29,12 @@ class StorageQuotaCacheTest {
     @Mock FileMapper<FileInfo, FileQuery> fileMapper;
     @Mock UserMapper<User, UserQuery> userMapper;
     @InjectMocks RedisComponent component;
+
+    @BeforeEach
+    void injectRawRedisUtilityExplicitly() {
+        // Mockito 5 不再将参数化 mock 自动匹配到原始泛型字段；保持生产 Bean 的 Spring 注入方式不变。
+        ReflectionTestUtils.setField(component, "redisUtils", redisUtils);
+    }
 
     @Test
     void expiredCacheRetainsAdministrativelyAssignedQuota() {

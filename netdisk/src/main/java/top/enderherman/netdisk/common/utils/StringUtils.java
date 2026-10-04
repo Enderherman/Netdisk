@@ -1,15 +1,18 @@
 package top.enderherman.netdisk.common.utils;
 
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.commons.lang3.RandomStringUtils;
 import top.enderherman.netdisk.common.constants.Constants;
 import top.enderherman.netdisk.common.exceptions.BusinessException;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.SecureRandom;
 
 
 public class StringUtils {
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final char[] DIGITS = "0123456789".toCharArray();
+    private static final char[] ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".toCharArray();
     /**
      * 生成随机数
      *
@@ -17,7 +20,7 @@ public class StringUtils {
      * @return 随机数
      */
     public static String getRandomNumber(Integer length) {
-        return RandomStringUtils.random(length, false, true);
+        return randomCharacters(length, DIGITS);
     }
 
     /**
@@ -27,7 +30,14 @@ public class StringUtils {
      * @return 随机码
      */
     public static String getRandomString(Integer length) {
-        return RandomStringUtils.random(length, true, true);
+        return randomCharacters(length, ALPHANUMERIC);
+    }
+
+    private static String randomCharacters(Integer length, char[] alphabet) {
+        if (length == null || length < 0) throw new IllegalArgumentException("随机码长度不能为负数或空值");
+        char[] value = new char[length];
+        for (int i = 0; i < value.length; i++) value[i] = alphabet[RANDOM.nextInt(alphabet.length)];
+        return new String(value);
     }
 
     public static void checkParam(Object param) {

@@ -32,6 +32,13 @@ spring:
       mail:
         smtp:
           socketFactory: javax.net.ssl.SSLSocketFactory
+          connectiontimeout: ${NETDISK_MAIL_CONNECT_TIMEOUT_MS:5000}
+          timeout: ${NETDISK_MAIL_READ_TIMEOUT_MS:10000}
+          writetimeout: ${NETDISK_MAIL_WRITE_TIMEOUT_MS:10000}
+        smtps:
+          connectiontimeout: ${NETDISK_MAIL_CONNECT_TIMEOUT_MS:5000}
+          timeout: ${NETDISK_MAIL_READ_TIMEOUT_MS:10000}
+          writetimeout: ${NETDISK_MAIL_WRITE_TIMEOUT_MS:10000}
       debug: false
     protocol: smtps
   data:
@@ -39,6 +46,7 @@ spring:
       database: ${NETDISK_REDIS_DB:0}
       host: ${NETDISK_REDIS_HOST:127.0.0.1}
       port: ${NETDISK_REDIS_PORT:6379}
+      password: ${NETDISK_REDIS_PASSWORD:}
       timeout: 2000ms
       lettuce:
         pool:
