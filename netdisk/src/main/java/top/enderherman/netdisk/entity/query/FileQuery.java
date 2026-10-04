@@ -9,6 +9,12 @@ package top.enderherman.netdisk.entity.query;
  */
 public class FileQuery extends BaseParam {
 
+    /** 已转义的文件名文字搜索，与内部旧模糊条件分开。 */
+    private String fileNameSearch;
+
+    public String getFileNameSearch() { return fileNameSearch; }
+    public void setFileNameSearch(String fileNameSearch) { this.fileNameSearch = fileNameSearch; }
+
 
     /**
      * 文件ID

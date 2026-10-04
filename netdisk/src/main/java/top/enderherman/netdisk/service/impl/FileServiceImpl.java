@@ -65,6 +65,9 @@ public class FileServiceImpl implements FileService {
     @Resource
     private RecycleStorageService recycleStorageService;
 
+    @Resource
+    private FileOrganizationService fileOrganizationService;
+
     /**
      * 根据条件查询列表
      */
@@ -90,7 +93,8 @@ public class FileServiceImpl implements FileService {
     @Override
     public PaginationResultVO<FileInfo> findListByPage(FileQuery param) {
         int count = this.findCountByParam(param);
-        int pageSize = param.getPageSize() == null ? PageSizeEnum.SIZE15.getSize() : param.getPageSize();
+        int pageSize = param.getPageSize() == null ? PageSizeEnum.SIZE15.getSize()
+                : Math.max(1, Math.min(100, param.getPageSize()));
 
         SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
         param.setSimplePage(page);
@@ -333,57 +337,13 @@ public class FileServiceImpl implements FileService {
      */
     @Override
     public FileInfo newFolder(String filePid, String userId, String folderName) {
-        //校验是否存在重名文件夹
-        checkFileName(filePid, userId, folderName, FileFolderTypeEnum.FOLDER.getType());
-        Date curDate = new Date();
-        FileInfo fileInfo = new FileInfo();
-        fileInfo.setFileId(StringUtils.getRandomString(Constants.LENGTH_10));
-        fileInfo.setUserId(userId);
-        fileInfo.setFilePid(filePid);
-        fileInfo.setFileName(folderName);
-        fileInfo.setFolderType(FileFolderTypeEnum.FOLDER.getType());
-        fileInfo.setCreateTime(curDate);
-        fileInfo.setLastUpdateTime(curDate);
-        fileInfo.setStatus(FileStatusEnum.USING.getStatus());
-        fileInfo.setDelFlag(FileDeleteFlagEnum.USING.getFlag());
-        this.fileMapper.insert(fileInfo);
-        return fileInfo;
+        return fileOrganizationService.newFolder(userId, filePid, folderName);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FileInfo rename(String fileId, String userId, String fileName) {
-        FileInfo fileInfo = this.fileMapper.selectByFileIdAndUserId(fileId, userId);
-        if (fileInfo == null) {
-            throw new BusinessException("文件不存在");
-        }
-        //校验当前文件夹下是否有重名文件
-        String filePid = fileInfo.getFilePid();
-        checkFileName(filePid, userId, fileName, fileInfo.getFolderType());
-        if (FileFolderTypeEnum.FILE.getType().equals(fileInfo.getFileType())) {
-            fileName = fileName + StringUtils.getFileSuffix(fileInfo.getFileName());
-        }
-
-        Date curDate = new Date();
-        FileInfo dbInfo = new FileInfo();
-        dbInfo.setFileName(fileName);
-        dbInfo.setLastUpdateTime(curDate);
-        fileMapper.updateByFileIdAndUserId(dbInfo, fileId, userId);
-
-        //面向并发型事务
-        FileQuery fileQuery = new FileQuery();
-        fileQuery.setFilePid(filePid);
-        fileQuery.setUserId(userId);
-        fileQuery.setFileName(fileName);
-        fileQuery.setDelFlag(FileDeleteFlagEnum.USING.getFlag());
-        Integer count = fileMapper.selectCount(fileQuery);
-        if (count > 1) {
-            throw new BusinessException("文件名" + fileName + "已经存在");
-        }
-        fileInfo.setFileName(fileName);
-        fileInfo.setLastUpdateTime(curDate);
-
-        return fileInfo;
+        return fileOrganizationService.rename(userId, fileId, fileName);
     }
 
     /**
@@ -395,45 +355,7 @@ public class FileServiceImpl implements FileService {
      */
     @Override
     public void changeFileFolder(String fileIds, String filePid, String userId) {
-        //1.原地tp 干啥呢
-        if (fileIds.equals(filePid)) {
-            throw new BusinessException(ResponseCodeEnum.CODE_600);
-        }
-        //2.不在根目录下 看看有没问题
-        if (!Constants.ZERO_STR.equals(filePid)) {
-            FileInfo fileInfo = fileService.getFileInfoByFileIdAndUserId(filePid, userId);
-            if (fileInfo == null || !FileDeleteFlagEnum.USING.getFlag().equals(fileInfo.getDelFlag())) {
-                throw new BusinessException(ResponseCodeEnum.CODE_600);
-            }
-        }
-        //3.查询移动的目标文件夹里所包含的文件
-        String[] fileIdArray = fileIds.split(",");
-        FileQuery query = new FileQuery();
-        query.setFilePid(filePid);
-        query.setUserId(userId);
-        List<FileInfo> dbFileList = fileService.findListByParam(query);
-        //4.查询到的文件转为map
-        Map<String, FileInfo> dbFileMap = dbFileList.stream().collect(
-                Collectors.toMap(FileInfo::getFileName, Function.identity(), (file1, file2) -> file2));
-        //5.查询选中的文件
-        query = new FileQuery();
-        query.setUserId(userId);
-        query.setFileIdArray(fileIdArray);
-        List<FileInfo> selectFileList = this.findListByParam(query);
-
-        //6.选中文件夹更新父级id 重名的进行重命名
-        for (FileInfo item : selectFileList) {
-            FileInfo rootFileInfo = dbFileMap.get(item.getFileName());
-            //文件名已存在，重命名要移动的文件加密
-            FileInfo updateInfo = new FileInfo();
-            if (rootFileInfo != null) {
-                String fileName = StringUtils.rename(item.getFileName());
-                updateInfo.setFileName(fileName);
-            }
-            updateInfo.setFilePid(filePid);
-            fileMapper.updateByFileIdAndUserId(updateInfo, item.getFileId(), userId);
-        }
-
+        fileOrganizationService.move(userId, fileIds, filePid);
     }
 
     /**

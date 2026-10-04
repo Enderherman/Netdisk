@@ -17,6 +17,7 @@ import top.enderherman.netdisk.common.config.AppConfig;
 import top.enderherman.netdisk.common.utils.CopyUtils;
 import top.enderherman.netdisk.common.utils.StringUtils;
 import top.enderherman.netdisk.entity.dto.SessionWebUserDto;
+import top.enderherman.netdisk.entity.dto.FileListRequest;
 import top.enderherman.netdisk.entity.dto.UploadResultDto;
 import top.enderherman.netdisk.entity.enums.FileCategoryEnum;
 import top.enderherman.netdisk.entity.enums.FileDeleteFlagEnum;
@@ -26,6 +27,7 @@ import top.enderherman.netdisk.entity.query.FileQuery;
 import top.enderherman.netdisk.entity.vo.FileInfoVO;
 import top.enderherman.netdisk.entity.vo.PaginationResultVO;
 import top.enderherman.netdisk.service.FileService;
+import top.enderherman.netdisk.service.impl.FileOrganizationService;
 
 import java.util.List;
 
@@ -38,6 +40,9 @@ public class FileController extends ACommonFileController {
     @Resource
     private FileService fileService;
 
+    @Resource
+    private FileOrganizationService fileOrganizationService;
+
 
 
 
@@ -49,19 +54,9 @@ public class FileController extends ACommonFileController {
      */
     @RequestMapping("loadDataList")
     @GlobalInterceptor
-    public BaseResponse<?> loadDataList(HttpSession session, FileQuery query, String category) {
-        FileCategoryEnum categoryEnum = FileCategoryEnum.getByCode(category);
-        if (categoryEnum != null) {
-            //设置查询类型
-            query.setFileCategory(categoryEnum.getCategory());
-        }
-        //设置查询相关信息
-        query.setUserId(getUserInfoFromSession(session).getUserId());
-        query.setOrderBy("last_update_time desc");
-        query.setDelFlag(FileDeleteFlagEnum.USING.getFlag());
-
-        //设置返回结果
-        PaginationResultVO<?> resultVO = fileService.findListByPage(query);
+    public BaseResponse<?> loadDataList(HttpSession session, FileListRequest query, String category) {
+        PaginationResultVO<?> resultVO = fileOrganizationService.list(
+                getUserInfoFromSession(session).getUserId(), query, category);
         return getSuccessResponse(convert2PaginationVO(resultVO, FileInfoVO.class));
     }
 
@@ -147,7 +142,7 @@ public class FileController extends ACommonFileController {
      * @param fileName 文件夹名称
      * @return 文件夹信息
      */
-    @RequestMapping("/newFoloder")
+    @RequestMapping({"/newFoloder", "/newFolder"})
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> newFolder(HttpSession session,
                                      @VerifyParam(required = true) String filePid,
@@ -167,7 +162,7 @@ public class FileController extends ACommonFileController {
     public BaseResponse<?> getFolderInfo(HttpSession session,
                                          @VerifyParam(required = true) String path) {
         SessionWebUserDto webUserDto = getUserInfoFromSession(session);
-        return super.getFolderInfo(path, webUserDto.getIsAdmin()?null:webUserDto.getUserId());
+        return super.getFolderInfo(path, webUserDto.getUserId());
     }
 
     /**
@@ -192,22 +187,7 @@ public class FileController extends ACommonFileController {
                                          @VerifyParam(required = true) String filePid,
                                          String currentFileIds) {
         SessionWebUserDto userDto = getUserInfoFromSession(session);
-        FileQuery fileQuery = new FileQuery();
-        fileQuery.setUserId(userDto.getUserId());
-        fileQuery.setFilePid(filePid);
-        fileQuery.setFolderType(FileFolderTypeEnum.FOLDER.getType());
-        //排除当前所选文件 但不排除当前所选文件夹的父级文件夹
-        if (!StringUtils.isEmpty(currentFileIds)) {
-            String[] split = currentFileIds.split(",");
-            if (split.length >= 1) {
-                String[] finalStr = new String[split.length - 1];
-                System.arraycopy(split, 1, finalStr, 0, finalStr.length);
-                fileQuery.setExcludeFileIdArray(finalStr);
-            }
-        }
-        fileQuery.setDelFlag(FileDeleteFlagEnum.USING.getFlag());
-        fileQuery.setOrderBy("create_time desc");
-        List<FileInfo> fileInfoList = fileService.findListByParam(fileQuery);
+        List<FileInfo> fileInfoList = fileOrganizationService.folders(userDto.getUserId(), filePid, currentFileIds);
 
         return getSuccessResponse(CopyUtils.copyList(fileInfoList, FileInfoVO.class));
     }

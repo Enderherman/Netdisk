@@ -126,6 +126,9 @@
             <if test="query.fileNameFuzzy!= null  and query.fileNameFuzzy!=''">
                 and file_name like concat('%', #{query.fileNameFuzzy}, '%')
             </if>
+            <if test="query.fileNameSearch != null and query.fileNameSearch != ''">
+                and file_name like concat('%', #{query.fileNameSearch}, '%') escape '!'
+            </if>
             <if test="query.fileCoverFuzzy!= null  and query.fileCoverFuzzy!=''">
                 and file_cover like concat('%', #{query.fileCoverFuzzy}, '%')
             </if>
