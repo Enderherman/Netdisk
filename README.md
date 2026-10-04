@@ -2,7 +2,7 @@
 
 基于程序员老罗 EasyPan 教程手写实现的个人网盘，正在补齐自动化测试、修复历史业务缺陷，并配套新的 [NetdiskWeb](https://github.com/Enderherman/NetdiskWeb)。
 
-当前版本：**0.8.1**。后端覆盖账号、文件组织、上传续传、内容预览、分享、回收站、复制/ZIP、最近文件和管理接口，并新增默认关闭的可配置 QQ OAuth；配套前端已接通核心功能。
+当前版本：**0.9.0**。后端覆盖账号、文件组织、上传续传、内容预览、分享、回收站、复制/ZIP、最近文件和管理接口，并新增默认关闭的可配置 QQ OAuth；配套前端已接通核心功能。
 
 ## 技术与现有模块
 
@@ -10,14 +10,18 @@ Java 17、Spring Boot 3.5.16、MyBatis starter 3.0.5、MySQL 8、Redis。图片�
 
 现有代码包括账号注册登录、邮件验证码、文件上传/下载/目录管理、分享、回收站及管理后台。逐项实测与修复状态见 [验收清单](docs/ACCEPTANCE.md)。新前端为独立仓库，历史 `dist/` 仅为旧构建产物。
 
-## 启动
+## Docker 自部署
+
+仓库包含 Java 17 后端镜像与 MySQL/Redis/前后端编排，前端仓库提供非 root Nginx 镜像。完整配置、初始化、HTTPS、备份和升级步骤见 [部署说明](docs/DEPLOYMENT.md)。默认只绑定本机端口，示例不含默认密码或账号；本次未部署到 NAS。
+
+## 本地启动
 
 1. 安装 JDK 17、Maven 3.9、MySQL 8、Redis。
 2. 在独立实例或确认为空的数据库中执行 `database.sql`。该脚本建立 `netdisk` 数据库，不应直接对已有业务数据执行。
    已有数据库升级至本版前，备份后执行一次 `database/migrations/20261004_account_security.sql`；新建数据库不重复执行迁移。
 3. 按 `.env.example` 设置进程环境变量。Spring Boot 直接读取环境变量，**不会自动加载 `.env` 文件**。
 4. 在 `netdisk/` 目录运行 `mvn spring-boot:run`；接口默认地址 `http://localhost:7090/api`。
-5. 生产打包使用 `mvn clean verify`，再运行 `java -jar target/netdisk-0.8.1.jar`。生产环境应使用 HTTPS，并设置 `NETDISK_COOKIE_SECURE=true`。
+5. 生产打包使用 `mvn clean verify`，再运行 `java -jar target/netdisk-0.9.0.jar`。生产环境应使用 HTTPS，并设置 `NETDISK_COOKIE_SECURE=true`。
 
 `NETDISK_STORAGE` 应指向专用可写存储目录并以 `/` 结尾。数据库和 SMTP 密码不入库。管理员邮箱使用 `NETDISK_ADMIN_EMAILS` 精确匹配；未配置时无管理员。QQ OAuth 已实现，默认关闭；显式设置 `NETDISK_QQ_ENABLED=true` 并配置应用ID/密钥和同源回调后启用。流程与限制见 [QQ 登录](docs/API-QQ.md)，尚未使用真实应用凭据完成外部授权验收。邮件未配置时注册/找回提示不可用；实际邮件投递仍需单独验收。
 

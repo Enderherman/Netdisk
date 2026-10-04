@@ -1,0 +1,53 @@
+name: Backend Docker image verification
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build Java 17 runtime image
+        run: docker build --pull --file deploy/backend.Dockerfile --tag netdisk-backend:ci .
+      - name: Inspect packaged JAR, runtime user, and health probe
+        run: |
+          docker create --name netdisk-backend-artifact-ci netdisk-backend:ci
+          trap 'docker rm -v netdisk-backend-artifact-ci >/dev/null 2>&1 || true' EXIT
+          docker cp netdisk-backend-artifact-ci:/opt/netdisk/netdisk.jar /tmp/netdisk-ci.jar
+          docker cp netdisk-backend-artifact-ci:/opt/netdisk/health/Healthcheck.class /tmp/Healthcheck.class
+          python3 - <<'PY'
+          import json, subprocess, zipfile
+          from pathlib import Path
+          image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', 'netdisk-backend:ci']))[0]['Config']
+          assert image['User'] == '10001:10001', image['User']
+          assert image['Entrypoint'] == ['java', '-jar', '/opt/netdisk/netdisk.jar']
+          assert image['Healthcheck']['Test'][-1] == 'Healthcheck'
+          assert 'NETDISK_STORAGE=/data/netdisk/' in image['Env']
+          with zipfile.ZipFile('/tmp/netdisk-ci.jar') as jar:
+              main = jar.read('BOOT-INF/classes/top/enderherman/netdisk/NetdiskApplication.class')
+              assert main[:4] == b'\xca\xfe\xba\xbe' and int.from_bytes(main[6:8], 'big') == 61
+              assert b'org.springframework.boot.loader.launch.JarLauncher' in jar.read('META-INF/MANIFEST.MF')
+              assert any(name.startswith('BOOT-INF/lib/spring-boot-') for name in jar.namelist())
+          probe = Path('/tmp/Healthcheck.class').read_bytes()
+          assert probe[:4] == b'\xca\xfe\xba\xbe' and int.from_bytes(probe[6:8], 'big') == 61
+          assert b'/api/accountCapabilities' in probe
+          print('Executable Java 17 JAR, non-root user, and bundled health probe verified.')
+          PY
+      - name: Check non-root storage and executable health probe without a network
+        run: |
+          docker run --rm --network none --entrypoint sh netdisk-backend:ci -ec '
+            test "$(id -u)" = 10001
+            test -r /opt/netdisk/netdisk.jar
+            test -w /data/netdisk
+            touch /data/netdisk/.ci-write-probe
+            if java -Xms8m -Xmx32m -cp /opt/netdisk/health Healthcheck; then
+              echo "Health probe incorrectly accepted an absent application" >&2
+              exit 1
+            fi
+          '

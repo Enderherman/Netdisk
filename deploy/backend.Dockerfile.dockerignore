@@ -1,0 +1,10 @@
+# Dockerfile-specific allowlist: do not send local data, credentials or Git history.
+**
+!netdisk/
+!netdisk/pom.xml
+!netdisk/src/
+!netdisk/src/**
+!deploy/
+!deploy/backend.Dockerfile
+!deploy/backend.Dockerfile.dockerignore
+!deploy/Healthcheck.java
