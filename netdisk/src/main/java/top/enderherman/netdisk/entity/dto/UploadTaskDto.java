@@ -17,6 +17,8 @@ public class UploadTaskDto {
     private long temporaryBytes;
     private Long fileSize;
     private boolean fileAvailable;
+    private String actualFileName;
+    private String navigationPath;
     private long createdAt;
     private long updatedAt;
     private long expiresAt;

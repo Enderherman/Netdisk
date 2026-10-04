@@ -54,7 +54,7 @@ public class UploadTaskService {
                         if (!id.matches("[A-Za-z0-9]{10}") || !Files.isDirectory(task, LinkOption.NOFOLLOW_LINKS)) continue;
                         try {
                             var manifest = storage.readManifest(root, task, userId, id);
-                            UploadTaskDto dto = describe(root, task, manifest, registered.get(id), false);
+                            UploadTaskDto dto = describe(root, task, manifest, registered.get(id), false, registered);
                             if (state == null || state.isBlank() || state.equals(dto.getState())) tasks.add(dto);
                         } catch (IOException | BusinessException invalid) {
                             log.warn("跳过无法读取的上传任务，userId={}，fileId={}", userId, id);
@@ -78,7 +78,7 @@ public class UploadTaskService {
             Path root = storage.storageRoot();
             Path task = storage.safe(root, "temp/" + userId + "/" + id);
             return describe(root, task, storage.readManifest(root, task, userId, id),
-                    fileMapper.selectByFileIdAndUserId(id, userId), true);
+                    fileMapper.selectByFileIdAndUserId(id, userId), true, null);
         } catch (IOException ex) { throw new BusinessException("上传任务不存在或无法读取", ex); }
     }
 
@@ -90,7 +90,7 @@ public class UploadTaskService {
                 throw new BusinessException("上传已完成，取消任务不会删除网盘原件");
             }
             storage.closeTask(root, task, manifest, "cancelled");
-            return describe(root, task, manifest, null, true);
+            return describe(root, task, manifest, null, true, null);
         });
     }
 
@@ -142,7 +142,7 @@ public class UploadTaskService {
     }
 
     private UploadTaskDto describe(Path root, Path task, FileUploadService.Manifest manifest,
-                                   FileInfo file, boolean detailed) throws IOException {
+                                   FileInfo file, boolean detailed, Map<String, FileInfo> registered) throws IOException {
         boolean completed = file != null || manifest.getCompletedStatus() != null;
         String state = completed ? "completed" : manifest.getTerminalState();
         long now = System.currentTimeMillis();
@@ -176,10 +176,30 @@ public class UploadTaskService {
         dto.setReceivedChunks(detailed ? received : List.of()); dto.setTemporaryBytes(temporaryBytes);
         dto.setFileSize(file == null ? null : file.getFileSize());
         dto.setFileAvailable(file != null && Integer.valueOf(2).equals(file.getDelFlag()) && Integer.valueOf(2).equals(file.getStatus()));
+        if (dto.isFileAvailable()) {
+            dto.setActualFileName(file.getFileName());
+            dto.setNavigationPath(navigationPath(file, registered));
+        }
         dto.setCreatedAt(manifest.getCreatedAt()); dto.setUpdatedAt(storage.lastActivity(manifest));
         dto.setExpiresAt(storage.lastActivity(manifest) + (completed || manifest.getTerminalState() != null
                 ? storage.receiptTtlMillis() : storage.taskTtlMillis()));
         return dto;
+    }
+
+    /** 返回网盘目录 ID 链，不返回磁盘路径；兼容完成后重命名、移动及自动重名。 */
+    private String navigationPath(FileInfo file, Map<String, FileInfo> registered) {
+        List<String> parents = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        String id = file.getFilePid();
+        while (!"0".equals(id)) {
+            if (id == null || !visited.add(id) || parents.size() >= 200) return null;
+            FileInfo parent = registered == null ? fileMapper.selectByFileIdAndUserId(id, file.getUserId()) : registered.get(id);
+            if (parent == null || !Integer.valueOf(1).equals(parent.getFolderType()) || !Integer.valueOf(2).equals(parent.getDelFlag())) return null;
+            parents.add(id);
+            id = parent.getFilePid();
+        }
+        Collections.reverse(parents);
+        return parents.isEmpty() ? "0" : String.join("/", parents);
     }
 
     private void requireEnabled(String userId, boolean lock) {

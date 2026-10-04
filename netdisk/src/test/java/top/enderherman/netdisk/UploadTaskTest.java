@@ -234,6 +234,35 @@ class UploadTaskTest {
         return files.uploadFile(user(user), id, new MockMultipartFile("file", bytes.getBytes(StandardCharsets.UTF_8)),
                 "task.txt", "0", DigestUtils.md5Hex(whole), index, chunks).getFileId();
     }
+
+    @Test void completedTaskLocatesActualFileAfterCollisionRenameAndMove() {
+        upload("alice", null, "AB", 0, 1, "AB");
+        String duplicate = upload("alice", null, "AB", 0, 1, "AB");
+        var original = tasks.detail("alice", duplicate);
+        assertEquals("task.txt", original.getFileName());
+        assertEquals("task (1).txt", original.getActualFileName());
+        assertEquals("0", original.getNavigationPath());
+        var parent = files.newFolder("0", "alice", "parent");
+        var nested = files.newFolder(parent.getFileId(), "alice", "nested");
+        files.rename(duplicate, "alice", "renamed.txt");
+        files.changeFileFolder(duplicate, nested.getFileId(), "alice");
+        var moved = tasks.detail("alice", duplicate);
+        assertEquals("task.txt", moved.getFileName());
+        assertEquals("renamed.txt", moved.getActualFileName());
+        assertEquals(parent.getFileId() + "/" + nested.getFileId(), moved.getNavigationPath());
+        assertEquals(moved.getNavigationPath(), tasks.list("alice", 1, 20, "completed").getList().stream()
+                .filter(task -> duplicate.equals(task.getFileId())).findFirst().orElseThrow().getNavigationPath());
+        files.removeFile2RecycleBatch("alice", duplicate);
+        assertNull(tasks.detail("alice", duplicate).getNavigationPath());
+    }
+
+    @Test void taskNavigationNeverFollowsAnotherUsersFolderOrBrokenParents() {
+        String id = upload("alice", null, "AB", 0, 1, "AB");
+        var foreign = files.newFolder("0", "bob", "private");
+        jdbc.update("update file_info set file_pid=? where user_id='alice' and file_id=?", foreign.getFileId(), id);
+        assertNull(tasks.detail("alice", id).getNavigationPath());
+        assertNull(tasks.list("alice", 1, 20, "completed").getList().get(0).getNavigationPath());
+    }
     private SessionWebUserDto user(String id) { var value = new SessionWebUserDto(); value.setUserId(id); value.setIsAdmin(false); return value; }
     private MockHttpSession session(String id) { var session = new MockHttpSession(); session.setAttribute(Constants.SESSION_KEY, user(id)); return session; }
     private Path task(String user, String id) { return root.resolve("temp").resolve(user).resolve(id); }
