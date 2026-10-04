@@ -96,6 +96,8 @@ public class GlobalOperationAspect {
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }
         sessionWebUserDto.setIsAdmin(accountSecurityService.isAdmin(user.getEmail()));
+        sessionWebUserDto.setNickName(user.getNickName());
+        sessionWebUserDto.setAvatar(user.getQqAvatar());
         if (checkAdmin && !Boolean.TRUE.equals(sessionWebUserDto.getIsAdmin())) {
             throw new BusinessException(ResponseCodeEnum.CODE_404);
         }

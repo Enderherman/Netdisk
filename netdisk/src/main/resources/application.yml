@@ -7,6 +7,7 @@ server:
       cookie:
         http-only: true
         same-site: lax
+        secure: ${NETDISK_COOKIE_SECURE:false}
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -52,6 +53,9 @@ spring:
 
 admin:
   email: ${NETDISK_ADMIN_EMAILS:}
+netdisk:
+  security:
+    allowed-origins: ${NETDISK_ALLOWED_ORIGINS:}
 # qq登陆相关
 qq:
   app:

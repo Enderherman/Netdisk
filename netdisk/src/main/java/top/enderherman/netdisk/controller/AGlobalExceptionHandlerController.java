@@ -1,6 +1,8 @@
 package top.enderherman.netdisk.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -18,11 +20,16 @@ public class AGlobalExceptionHandlerController extends ABaseController {
     private static final Logger logger = LoggerFactory.getLogger(AGlobalExceptionHandlerController.class);
 
     @ExceptionHandler(value = Exception.class)
-    Object handleException(Exception e, HttpServletRequest request) {
+    Object handleException(Exception e, HttpServletRequest request, HttpServletResponse response) {
         logger.error("请求错误，请求地址{},错误信息:", request.getRequestURL(), e);
         BaseResponse<?> ajaxResponse = new BaseResponse<>();
         //404
-        if (e instanceof NoHandlerFoundException) {
+        if (e instanceof HttpRequestMethodNotSupportedException) {
+            response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            ajaxResponse.setCode(405);
+            ajaxResponse.setMessage("请求方法不支持，请使用指定的方法");
+            ajaxResponse.setStatus(STATUS_ERROR);
+        } else if (e instanceof NoHandlerFoundException) {
             ajaxResponse.setCode(ResponseCodeEnum.CODE_404.getCode());
             ajaxResponse.setMessage(ResponseCodeEnum.CODE_404.getMsg());
             ajaxResponse.setStatus(STATUS_ERROR);

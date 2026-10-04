@@ -10,6 +10,9 @@ import top.enderherman.netdisk.common.config.SystemConfig;
 import top.enderherman.netdisk.common.constants.Constants;
 import top.enderherman.netdisk.common.exceptions.BusinessException;
 import top.enderherman.netdisk.common.utils.StringUtils;
+import top.enderherman.netdisk.common.utils.RedisUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.enderherman.netdisk.entity.dto.SessionWebUserDto;
 import top.enderherman.netdisk.entity.dto.UserSpaceDto;
 import top.enderherman.netdisk.entity.enums.PageSize;
@@ -57,6 +60,10 @@ public class UserServiceImpl implements UserService {
     private AccountSecurityService accountSecurityService;
     @Resource
     private AccountRateLimiter accountRateLimiter;
+    @Resource
+    private RedisUtils<Object> redisUtils;
+    @Resource
+    private FileUploadService fileUploadService;
 
     /**
      * 根据条件查询列表
@@ -79,6 +86,14 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public PaginationResultVO<User> findListByPage(UserQuery param) {
+        if ((param.getPageNo() != null && (param.getPageNo() < 1 || param.getPageNo() > 1_000_000))
+                || (param.getPageSize() != null && (param.getPageSize() < 1 || param.getPageSize() > 100))
+                || (param.getStatus() != null && param.getStatus() != 0 && param.getStatus() != 1)
+                || (param.getNickNameFuzzy() != null && param.getNickNameFuzzy().length() > 20)
+                || (param.getEmailFuzzy() != null && param.getEmailFuzzy().length() > 150)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        param.setOrderBy("create_time desc,user_id asc");
         int count = this.findCountByParam(param);
         int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
 
@@ -119,6 +134,10 @@ public class UserServiceImpl implements UserService {
         user.setUseSpace(0L);
         //容量初始化
         SystemConfig systemConfig = redisComponent.getSystemConfig();
+        if (systemConfig.getUserInitUseSpace() == null || systemConfig.getUserInitUseSpace() < 1
+                || systemConfig.getUserInitUseSpace() > 1_048_576) {
+            throw new BusinessException("系统初始容量配置不正确，请联系管理员");
+        }
         user.setTotalSpace(systemConfig.getUserInitUseSpace() * Constants.MB);
         //插入用户数据
         userMapper.insert(user);
@@ -232,9 +251,45 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void changeUserSpace(String userId, Integer changeSpace) {
-        Long space = changeSpace * Constants.MB;
-        userMapper.updateUserSpace(userId, null, space);
-        redisComponent.resetUserSpaceUse(userId);
+        if (userId == null || userId.isBlank() || changeSpace == null || changeSpace == 0) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
+        if (fileInfoMapper.lockUserForStorage(userId) == null) throw new BusinessException("用户不存在");
+        User user = userMapper.selectByUserId(userId);
+        long occupied = Objects.requireNonNullElse(fileInfoMapper.selectUseSpace(userId), 0L);
+        long total;
+        long required;
+        try {
+            total = Math.addExact(user.getTotalSpace(), Math.multiplyExact(changeSpace.longValue(), Constants.MB));
+            required = Math.addExact(occupied, fileUploadService.pendingUploadBytes(userId));
+        } catch (ArithmeticException | NullPointerException exception) {
+            throw new BusinessException("容量数值超出范围");
+        }
+        if (total < 0 || total < required) throw new BusinessException("调整后的容量不能小于已占用和上传中空间");
+        User update = new User();
+        update.setTotalSpace(total);
+        update.setUseSpace(occupied);
+        if (userMapper.updateByUserId(update, userId) != 1) throw new BusinessException("用户不存在");
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try {
+                    redisUtils.delete(Constants.REDIS_KEY_USER_SPACE_USE + userId);
+                } catch (RuntimeException exception) {
+                    org.slf4j.LoggerFactory.getLogger(UserServiceImpl.class).warn("容量已提交，缓存失效操作失败", exception);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void updateNickname(String userId, String nickName) {
+        if (nickName == null || nickName.isBlank() || nickName.trim().length() > 20
+                || nickName.chars().anyMatch(Character::isISOControl)) {
+            throw new BusinessException("昵称须为 1 至 20 个字符，不能包含控制字符");
+        }
+        User update = new User();
+        update.setNickName(nickName.trim());
+        if (userMapper.updateByUserId(update, userId) != 1) throw new BusinessException("用户不存在");
     }
 
     @Override

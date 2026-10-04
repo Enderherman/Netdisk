@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import top.enderherman.netdisk.annotation.GlobalInterceptor;
@@ -73,7 +74,7 @@ public class FileController extends ACommonFileController {
      * @param chunks     分片的总数量
      * @return 文件ID, 状态
      */
-    @RequestMapping("/uploadFile")
+    @PostMapping("/uploadFile")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> uploadFile(HttpSession session,
                                       String fileId,
@@ -142,7 +143,7 @@ public class FileController extends ACommonFileController {
      * @param fileName 文件夹名称
      * @return 文件夹信息
      */
-    @RequestMapping({"/newFoloder", "/newFolder"})
+    @PostMapping({"/newFoloder", "/newFolder"})
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> newFolder(HttpSession session,
                                      @VerifyParam(required = true) String filePid,
@@ -168,7 +169,7 @@ public class FileController extends ACommonFileController {
     /**
      * 文件/文件夹重命名
      */
-    @RequestMapping("/rename")
+    @PostMapping("/rename")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> rename(HttpSession session,
                                   @VerifyParam(required = true) String fileId,
@@ -195,7 +196,7 @@ public class FileController extends ACommonFileController {
     /**
      * 移动所选文件到指定目录
      */
-    @RequestMapping("/changeFileFolder")
+    @PostMapping("/changeFileFolder")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> changFileFolder(HttpSession session,
                                            @VerifyParam(required = true) String fileIds,
@@ -208,7 +209,7 @@ public class FileController extends ACommonFileController {
     /**
      * 创建下载链接 短时时间串
      */
-    @RequestMapping("/createDownloadUrl/{fileId}")
+    @PostMapping("/createDownloadUrl/{fileId}")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> getDownloadUrl(HttpSession session,
                                           @VerifyParam(required = true) @PathVariable("fileId") String fileId
@@ -229,7 +230,7 @@ public class FileController extends ACommonFileController {
         super.download(request,response, code);
     }
 
-    @RequestMapping("/delFile")
+    @PostMapping("/delFile")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> delFile(HttpSession session,
                                    @VerifyParam(required = true) String fileIds){

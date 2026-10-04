@@ -12,6 +12,7 @@ import top.enderherman.netdisk.entity.query.FileShareQuery;
 import top.enderherman.netdisk.entity.vo.PaginationResultVO;
 import top.enderherman.netdisk.service.FileShareService;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -43,7 +44,7 @@ public class FileShareController extends ABaseController {
     /**
      * 新增分享文件
      */
-    @RequestMapping("/shareFile")
+    @PostMapping("/shareFile")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> shareFile(HttpSession session,
                                      @VerifyParam(required = true) String fileId,
@@ -62,7 +63,7 @@ public class FileShareController extends ABaseController {
     /**
      * 取消分享
      */
-    @RequestMapping("/cancelShare")
+    @PostMapping("/cancelShare")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> cancelShare(HttpSession session,
                                        @VerifyParam(required = true) String shareIds) {

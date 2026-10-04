@@ -46,7 +46,9 @@ public class RedisComponent {
      * 存储对应系统配置
      */
     public void saveSystemConfig(SystemConfig systemConfig) {
-        redisUtils.set(Constants.REDIS_KEY_SYS_SETTING, systemConfig);
+        if (!redisUtils.set(Constants.REDIS_KEY_SYS_SETTING, systemConfig)) {
+            throw new BusinessException(500, "系统设置保存失败，请检查缓存服务");
+        }
     }
 
     /**

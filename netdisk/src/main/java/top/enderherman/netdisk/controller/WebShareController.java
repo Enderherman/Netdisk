@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.enderherman.netdisk.annotation.GlobalInterceptor;
 import top.enderherman.netdisk.annotation.VerifyParam;
@@ -82,7 +83,7 @@ public class WebShareController extends ACommonFileController {
     /**
      * 校验验证码
      */
-    @RequestMapping("/checkShareCode")
+    @PostMapping("/checkShareCode")
     @GlobalInterceptor(checkLogin = false, checkParams = true)
     public BaseResponse<?> checkShareCode(HttpSession session,
                                           @VerifyParam(required = true) String shareId,
@@ -171,7 +172,7 @@ public class WebShareController extends ACommonFileController {
     /**
      * 创建下载链接 短时时间串
      */
-    @RequestMapping("/createDownloadUrl/{shareId}/{fileId}")
+    @PostMapping("/createDownloadUrl/{shareId}/{fileId}")
     @GlobalInterceptor(checkParams = true, checkLogin = false)
     public BaseResponse<?> getDownloadUrl(HttpSession session,
                                           @VerifyParam(required = true) @PathVariable("shareId") String shareId,
@@ -208,7 +209,7 @@ public class WebShareController extends ACommonFileController {
     /**
      * 保存分享文件
      */
-    @RequestMapping("/saveShare")
+    @PostMapping("/saveShare")
     @GlobalInterceptor(checkParams = true)
     public BaseResponse<?> saveShareFile(HttpSession session,
                               @VerifyParam(required = true) String shareId,

@@ -35,6 +35,8 @@ public interface UserService {
 
     void changePassword(String userId, String currentPassword, String password);
 
+    void updateNickname(String userId, String nickName);
+
     void updateUserByUserId(User user, String userId);
 
     SessionWebUserDto qqLogin(String code);

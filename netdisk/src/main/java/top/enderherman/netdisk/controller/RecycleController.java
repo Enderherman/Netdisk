@@ -3,6 +3,7 @@ package top.enderherman.netdisk.controller;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.enderherman.netdisk.annotation.GlobalInterceptor;
 import top.enderherman.netdisk.annotation.VerifyParam;
@@ -42,7 +43,7 @@ public class RecycleController extends ABaseController {
     /**
      * 还原重命名文件
      */
-    @RequestMapping("recoverFile")
+    @PostMapping("recoverFile")
     @GlobalInterceptor
     public BaseResponse<?> recoverFile(HttpSession session,
                                        @VerifyParam(required = true) String fileIds) {
@@ -54,7 +55,7 @@ public class RecycleController extends ABaseController {
     /**
      * 彻底删除文件
      */
-    @RequestMapping("/delFile")
+    @PostMapping("/delFile")
     @GlobalInterceptor
     public BaseResponse<?> deleteFile(HttpSession session,
                                        @VerifyParam(required = true) String fileIds) {

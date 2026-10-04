@@ -26,6 +26,7 @@ import top.enderherman.netdisk.common.utils.ImageGenerator;
 import top.enderherman.netdisk.service.UserService;
 import top.enderherman.netdisk.service.AccountSecurityService;
 import top.enderherman.netdisk.service.AccountRateLimiter;
+import top.enderherman.netdisk.service.AvatarService;
 
 import java.io.File;
 import java.io.IOException;
@@ -60,6 +61,8 @@ public class UserController extends ABaseController {
     private AccountSecurityService accountSecurityService;
     @Resource
     private AccountRateLimiter accountRateLimiter;
+    @Resource
+    private AvatarService avatarService;
 
     @GetMapping("/checkCode")
     public void checkCode(HttpServletResponse response, HttpSession session, Integer type) {
@@ -126,43 +129,16 @@ public class UserController extends ABaseController {
         return getSuccessResponse(sessionWebUserDto);
     }
 
-    @RequestMapping("/getAvatar/{userId}")
+    @GetMapping("/getAvatar/{userId}")
     @GlobalInterceptor(checkParams = true, checkLogin = false)
     public void getAvatar(HttpServletResponse response,
                           @VerifyParam(required = true) @PathVariable("userId") String userId) {
-        //头像文件夹路径
-        String avatarFolderName = Constants.FILE_FOLDER_FILE + Constants.FILE_FOLDER_AVATAR_NAME;
-        File folder = new File(appConfig.getProjectFolder() + avatarFolderName);
-        if (!folder.exists()) {
-            folder.mkdirs();
-        }
-
-        //头像路径
-        String avatarPath = appConfig.getProjectFolder() + avatarFolderName + userId + Constants.AVATAR_SUFFIX;
-        File avatar = new File(avatarPath);
-        if (!avatar.exists()) {
-
-            if (!new File(appConfig.getProjectFolder() + avatarFolderName + Constants.AVATAR_DEFAULT).exists()) {
-                //默认头像不存在
-                printNoDefaultImage(response);
-            }
-            //默认头像存在
-            avatarPath = appConfig.getProjectFolder() + avatarFolderName + Constants.AVATAR_DEFAULT;
-        }
-        response.setContentType("image/jpg");
-        writeFile(response, avatarPath);
-    }
-
-    /**
-     * 图像不存在
-     */
-    private void printNoDefaultImage(HttpServletResponse response) {
-        response.setHeader("Content-Type", "application/json;charset=UTF-8");
-        response.setStatus(HttpStatus.OK.value());
-        try (PrintWriter writer = response.getWriter()) {
-            writer.print("请在头像目录添加 默认头像default_avatar.jpg");
-        } catch (Exception e) {
-            log.error("输出默认图失败", e);
+        byte[] avatar = avatarService.read(userId);
+        response.setContentType("image/jpeg");
+        response.setHeader("Cache-Control", "no-cache");
+        try {
+            response.getOutputStream().write(avatar);
+        } catch (IOException e) {
             throw new BusinessException(ResponseCodeEnum.CODE_500);
         }
     }
@@ -214,31 +190,26 @@ public class UserController extends ABaseController {
     }
 
 
-    @RequestMapping("/updateUserAvatar")
+    @PostMapping("/updateUserAvatar")
     @GlobalInterceptor
     public BaseResponse<?> updateUserAvatar(HttpSession session, MultipartFile avatar) {
-        //1.获取目标头像存储位置
         SessionWebUserDto webUserDto = getUserInfoFromSession(session);
-        String avatarFolder = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + Constants.FILE_FOLDER_AVATAR_NAME;
-        //2.头像文件设置及其上传
-        File targetFileFolder = new File(avatarFolder);
-        File targetFile = new File(targetFileFolder.getPath() + "/" + webUserDto.getUserId() + Constants.AVATAR_SUFFIX);
-        if (!targetFileFolder.exists()) {
-            targetFileFolder.mkdirs();
-        }
-        try {
-            avatar.transferTo(targetFile);
-        } catch (Exception e) {
-            log.error("上传头像失败");
-            throw new BusinessException(ResponseCodeEnum.CODE_905);
-        }
-
+        avatarService.save(webUserDto.getUserId(), avatar);
         User userInfo = new User();
         userInfo.setQqAvatar("");
         userService.updateUserByUserId(userInfo, webUserDto.getUserId());
         webUserDto.setAvatar(null);
         session.setAttribute(Constants.SESSION_KEY, webUserDto);
         return getSuccessResponse(null);
+    }
+
+    @PostMapping("/updateProfile")
+    @GlobalInterceptor(checkParams = true)
+    public BaseResponse<?> updateProfile(HttpSession session, @VerifyParam(required = true, max = 20) String nickName) {
+        SessionWebUserDto user = getUserInfoFromSession(session);
+        userService.updateNickname(user.getUserId(), nickName);
+        user.setNickName(nickName.trim());
+        return getSuccessResponse(user);
     }
 
     @RequestMapping("/qqlogin")
