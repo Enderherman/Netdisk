@@ -24,9 +24,15 @@ import top.enderherman.netdisk.mapper.FileMapper;
 import top.enderherman.netdisk.mapper.UserMapper;
 import top.enderherman.netdisk.service.EmailCodeService;
 import top.enderherman.netdisk.service.UserService;
+import top.enderherman.netdisk.service.PasswordService;
+import top.enderherman.netdisk.service.AccountSecurityService;
+import top.enderherman.netdisk.service.AccountRateLimiter;
+import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
 
 import java.util.Date;
 import java.util.List;
+import java.time.Duration;
+import java.util.Objects;
 
 @Service("userService")
 public class UserServiceImpl implements UserService {
@@ -45,6 +51,12 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private AppConfig appConfig;
+    @Resource
+    private PasswordService passwordService;
+    @Resource
+    private AccountSecurityService accountSecurityService;
+    @Resource
+    private AccountRateLimiter accountRateLimiter;
 
     /**
      * 根据条件查询列表
@@ -79,6 +91,12 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void register(String email, String nickName, String password, String emailCode) {
+        email = accountSecurityService.normalizeEmail(email);
+        passwordService.validateNewPassword(password);
+        if (nickName == null || nickName.isBlank() || nickName.trim().length() > 20) {
+            throw new BusinessException("昵称须为 1 至 20 个字符");
+        }
+        nickName = nickName.trim();
         User user = userMapper.selectByEmail(email);
         if (user != null) {
             throw new BusinessException("邮箱账号已经存在");
@@ -88,14 +106,14 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("昵称已经存在");
         }
         //校验邮箱验证码
-        emailCodeService.checkEmailCode(email, emailCode);
+        emailCodeService.checkEmailCode(email, emailCode, 0);
         //用户个人信息初始化
         String userId = StringUtils.getRandomNumber(Constants.LENGTH_10);
         user = new User();
         user.setUserId(userId);
         user.setNickName(nickName);
         user.setEmail(email);
-        user.setPassword(StringUtils.encodingByMd5(password));
+        user.setPassword(passwordService.hash(password));
         user.setCreateTime(new Date());
         user.setStatus(UserStatusEnum.ENABLE.getStatus());
         user.setUseSpace(0L);
@@ -108,14 +126,29 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public SessionWebUserDto login(String email, String password) {
+        email = accountSecurityService.normalizeEmail(email);
+        accountRateLimiter.requireAllowed("login-email", email, 10, Duration.ofMinutes(15));
         //1.校验账号密码以及账号状态
         User user = userMapper.selectByEmail(email);
-        if (user == null || !user.getPassword().equals(password)) {
+        if (user == null || !passwordService.matches(password, user.getPassword())) {
             throw new BusinessException("账户或密码错误");
         }
-        if (user.getStatus().equals(UserStatusEnum.DISABLE.getStatus())) {
+        if (!UserStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
             throw new BusinessException("账户已被禁用");
         }
+        if (passwordService.needsUpgrade(user.getPassword())) {
+            String upgraded = passwordService.hash(password);
+            if (userMapper.upgradePassword(user.getUserId(), user.getPassword(), upgraded) != 1) {
+                throw new BusinessException("账户信息已变更，请重新登录");
+            }
+            user.setPassword(upgraded);
+        }
+        User current = userMapper.selectByUserId(user.getUserId());
+        if (current == null || !UserStatusEnum.ENABLE.getStatus().equals(current.getStatus())
+                || !Objects.equals(current.getPassword(), user.getPassword())) {
+            throw new BusinessException("账户信息已变更，请重新登录");
+        }
+        user = current;
 
         //2.更新最近登录时间
         User updateUser = new User();
@@ -127,7 +160,9 @@ public class UserServiceImpl implements UserService {
         SessionWebUserDto dto = new SessionWebUserDto();
         dto.setUserId(user.getUserId());
         dto.setNickName(user.getNickName());
-        dto.setIsAdmin(ArrayUtils.contains(appConfig.getAdminEmails().split(","), email));
+        dto.setIsAdmin(accountSecurityService.isAdmin(email));
+        dto.setAvatar(user.getQqAvatar());
+        dto.setSessionVersion(user.getSessionVersion());
 
         //4.设置用户空间使用情况
         UserSpaceDto userSpaceDto = new UserSpaceDto();
@@ -141,38 +176,57 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void resetPwd(String email, String password, String emailCode) {
+        email = accountSecurityService.normalizeEmail(email);
+        passwordService.validateNewPassword(password);
         //1.校验账号密码以及账号状态
         User user = userMapper.selectByEmail(email);
         if (user == null) {
             throw new BusinessException("账户不存在");
         }
         //2.校验验证码
-        emailCodeService.checkEmailCode(email, emailCode);
-        User userUpdate = new User();
-        userUpdate.setPassword(StringUtils.encodingByMd5(password));
-        userMapper.updateByEmail(userUpdate, email);
+        emailCodeService.checkEmailCode(email, emailCode, 1);
+        if (userMapper.changePasswordAndRevoke(user.getUserId(), passwordService.hash(password), user.getSessionVersion()) != 1) {
+            throw new BusinessException("账户信息已变更，请重新操作");
+        }
 
     }
 
     @Override
     public void updateUserByUserId(User bean, String userId) {
+        if (bean.getPassword() != null || bean.getStatus() != null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
+        }
         userMapper.updateByUserId(bean, userId);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void changePassword(String userId, String currentPassword, String password) {
+        passwordService.validateNewPassword(password);
+        accountRateLimiter.requireAllowed("password-change", userId, 5, Duration.ofMinutes(15));
+        User user = userMapper.selectByUserId(userId);
+        if (user == null || !UserStatusEnum.ENABLE.getStatus().equals(user.getStatus())
+                || !passwordService.matches(currentPassword, user.getPassword())) {
+            throw new BusinessException("当前密码不正确");
+        }
+        if (userMapper.changePasswordAndRevoke(userId, passwordService.hash(password), user.getSessionVersion()) != 1) {
+            throw new BusinessException("账户信息已变更，请重新登录");
+        }
+    }
+
+    @Override
     public SessionWebUserDto qqLogin(String code) {
-        //TODO QQLogin
-        return null;
+        throw new BusinessException("QQ 登录尚未启用，请使用邮箱登录");
     }
 
     @Override
     public void updateUserStatus(String userId, Integer status) {
-        User userInfo = new User();
-        userInfo.setStatus(status);
-        if(UserStatusEnum.DISABLE.getStatus().equals(status)){
-            userInfo.setUseSpace(0L);
+        if (status == null || (status != 0 && status != 1)) {
+            throw new BusinessException(ResponseCodeEnum.CODE_600);
         }
-        userMapper.updateByUserId(userInfo, userId);
+        if (userMapper.changeStatusAndRevoke(userId, status) != 1) {
+            throw new BusinessException("用户不存在");
+        }
     }
 
     @Override

@@ -20,9 +20,13 @@ import top.enderherman.netdisk.common.exceptions.BusinessException;
 import top.enderherman.netdisk.mapper.EmailCodeMapper;
 import top.enderherman.netdisk.mapper.UserMapper;
 import top.enderherman.netdisk.service.EmailCodeService;
+import top.enderherman.netdisk.service.AccountSecurityService;
+import top.enderherman.netdisk.service.AccountRateLimiter;
 import top.enderherman.netdisk.common.utils.StringUtils;
 
 import java.util.Date;
+import java.time.Duration;
+import java.security.SecureRandom;
 
 
 /**
@@ -49,30 +53,45 @@ public class EmailCodeServiceImpl implements EmailCodeService {
 
     @Resource
     private RedisComponent redisComponent;
+    @Resource
+    private AccountSecurityService accountSecurityService;
+    @Resource
+    private AccountRateLimiter accountRateLimiter;
+    private final SecureRandom random = new SecureRandom();
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void sendEmailCode(String email, Integer type) {
+        email = accountSecurityService.normalizeEmail(email);
+        if (type == null || (type != 0 && type != 1)) {
+            throw new BusinessException("验证码用途不正确");
+        }
+        if (!accountSecurityService.isEmailVerificationEnabled()) {
+            throw new BusinessException("邮件服务尚未配置，暂不支持注册或找回密码");
+        }
+        accountRateLimiter.requireAllowed("email-cooldown", email, 1, Duration.ofSeconds(60));
+        accountRateLimiter.requireAllowed("email-hour", email, 5, Duration.ofHours(1));
         //0注册 1找回
         if (type.equals(Constants.ZERO)) {
             User user = userMapper.selectByEmail(email);
             if (user != null) {
                 throw new BusinessException("邮箱已经存在");
             }
+        } else if (userMapper.selectByEmail(email) == null) {
+            throw new BusinessException("邮箱账号不存在");
         }
 
         //1.获取验证码
-        String code = StringUtils.getRandomNumber(Constants.LENGTH_5);
+        String code = String.format(java.util.Locale.ROOT, "%05d", random.nextInt(100_000));
 
         //2.发送验证码给用户
-        send(email, code);
-
         //3.设置之前验证码为过期
-        emailCodeMapper.disableEmailCode(email);
+        emailCodeMapper.disableEmailCode(email, type);
 
         //4.存储验证码
-        EmailCode emailCode = new EmailCode(email, code, new Date(), Constants.ZERO);
+        EmailCode emailCode = new EmailCode(email, code, new Date(), Constants.ZERO, type);
         emailCodeMapper.insert(emailCode);
+        send(email, code);
 
     }
 
@@ -84,18 +103,17 @@ public class EmailCodeServiceImpl implements EmailCodeService {
             helper.setFrom(appConfig.getSendUserName());
             helper.setTo(toEmail);
             //2.设置发送主题
-            System.out.println("1.开始时间：" + new Date());
             SystemConfig systemConfig = redisComponent.getSystemConfig();
-            System.out.println("2.redis操作完成时间：" + new Date());
             helper.setSubject(systemConfig.getRegisterEmailTitle());
             //3.设置发送内容
-            helper.setText(String.format(systemConfig.getRegisterEmailContent(), code));
+            if (systemConfig.getRegisterEmailContent() == null || !systemConfig.getRegisterEmailContent().contains("%s")) {
+                throw new BusinessException("邮件验证码模板必须包含 %s 占位符");
+            }
+            helper.setText(systemConfig.getRegisterEmailContent().replace("%s", code));
             //4.邮件发送时间
             helper.setSentDate(new Date());
             //5.邮件发送
-            System.out.println("3.发送开始时间：" + new Date());
             javaMailSender.send(message);
-            System.out.println("4.发送完成时间：" + new Date());
         } catch (Exception e) {
             log.error("邮件发送失败", e);
             throw new BusinessException("邮件发送失败");
@@ -109,15 +127,15 @@ public class EmailCodeServiceImpl implements EmailCodeService {
      * @param code  验证码
      */
     @Override
-    public void checkEmailCode(String email, String code) {
-        EmailCode emailCode = emailCodeMapper.selectByEmailAndCode(email, code);
-        if (emailCode == null) {
-            throw new BusinessException("邮箱验证码错误");
+    public void checkEmailCode(String email, String code, Integer purpose) {
+        email = accountSecurityService.normalizeEmail(email);
+        if (purpose == null || (purpose != 0 && purpose != 1)) {
+            throw new BusinessException("验证码用途不正确");
         }
-        if (emailCode.getStatus() == 1 ||
-                System.currentTimeMillis() - emailCode.getCreateTime().getTime() > Constants.LENGTH_15 * 60 * 1000) {
-            throw new BusinessException("邮箱验证码已过期");
+        accountRateLimiter.requireAllowed("email-verify", email + ":" + purpose, 5, Duration.ofMinutes(15));
+        if (code == null || !code.matches("[0-9]{5}") || emailCodeMapper.consumeCode(email, code, purpose,
+                new Date(System.currentTimeMillis() - Duration.ofMinutes(15).toMillis()), new Date()) != 1) {
+            throw new BusinessException("邮箱验证码错误、已过期或已使用");
         }
-        emailCodeMapper.disableEmailCode(email);
     }
 }

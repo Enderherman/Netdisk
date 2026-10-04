@@ -3,6 +3,7 @@ package top.enderherman.netdisk.aspect;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.aspectj.lang.JoinPoint;
@@ -21,6 +22,12 @@ import top.enderherman.netdisk.common.utils.StringUtils;
 import top.enderherman.netdisk.common.utils.VerifyUtils;
 import top.enderherman.netdisk.entity.dto.SessionWebUserDto;
 import top.enderherman.netdisk.entity.enums.ResponseCodeEnum;
+import top.enderherman.netdisk.entity.enums.UserStatusEnum;
+import top.enderherman.netdisk.entity.pojo.User;
+import top.enderherman.netdisk.entity.query.UserQuery;
+import top.enderherman.netdisk.mapper.UserMapper;
+import top.enderherman.netdisk.service.AccountSecurityService;
+import java.util.Objects;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -30,6 +37,10 @@ import java.lang.reflect.Parameter;
 @Aspect
 @Component("GlobalOperationAspect")
 public class GlobalOperationAspect {
+    @Resource
+    private UserMapper<User, UserQuery> userMapper;
+    @Resource
+    private AccountSecurityService accountSecurityService;
 
     private static final String[] TYPE_BASE = {"java.lang.String", "java.lang.Integer", "java.lang.Long"};
 
@@ -73,12 +84,19 @@ public class GlobalOperationAspect {
 
     private void validateLogin(Boolean checkAdmin) {
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-        HttpSession session = request.getSession();
-        SessionWebUserDto sessionWebUserDto = (SessionWebUserDto) session.getAttribute(Constants.SESSION_KEY);
+        HttpSession session = request.getSession(false);
+        SessionWebUserDto sessionWebUserDto = session == null ? null : (SessionWebUserDto) session.getAttribute(Constants.SESSION_KEY);
         if (sessionWebUserDto == null) {
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }
-        if (checkAdmin && !sessionWebUserDto.getIsAdmin()) {
+        User user = userMapper.selectByUserId(sessionWebUserDto.getUserId());
+        if (user == null || !UserStatusEnum.ENABLE.getStatus().equals(user.getStatus())
+                || !Objects.equals(user.getSessionVersion(), sessionWebUserDto.getSessionVersion())) {
+            session.removeAttribute(Constants.SESSION_KEY);
+            throw new BusinessException(ResponseCodeEnum.CODE_901);
+        }
+        sessionWebUserDto.setIsAdmin(accountSecurityService.isAdmin(user.getEmail()));
+        if (checkAdmin && !Boolean.TRUE.equals(sessionWebUserDto.getIsAdmin())) {
             throw new BusinessException(ResponseCodeEnum.CODE_404);
         }
     }

@@ -10,6 +10,8 @@ public class AppConfig {
 
     @Value("${spring.mail.username:}")
     private String sendUserName;
+    @Value("${spring.mail.password:}")
+    private String sendUserPassword;
 
     @Value("${admin.email:}")
     private String adminEmails;

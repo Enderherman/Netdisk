@@ -20,4 +20,12 @@ public interface UserMapper<T, P> extends BaseMapper<T, P> {
      * 根据UserId获取对象
      */
     T selectByUserId(@Param("userId") String userId);
+
+    Integer upgradePassword(@Param("userId") String userId, @Param("oldPassword") String oldPassword,
+                            @Param("newPassword") String newPassword);
+
+    Integer changePasswordAndRevoke(@Param("userId") String userId, @Param("password") String password,
+                                   @Param("expectedVersion") Long expectedVersion);
+
+    Integer changeStatusAndRevoke(@Param("userId") String userId, @Param("status") Integer status);
 }

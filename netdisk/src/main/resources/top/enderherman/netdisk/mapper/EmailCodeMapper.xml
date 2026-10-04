@@ -13,15 +13,16 @@
         <result column="create_time" property="createTime"/>
         <!--0:未使用 1:已使用-->
         <result column="status" property="status"/>
+        <result column="purpose" property="purpose"/>
     </resultMap>
 
     <!-- 通用查询结果列-->
     <sql id="base_column_list">
-        email,code,create_time,status
+        email,code,create_time,status,purpose
     </sql>
 
     <insert id="insert" parameterType="top.enderherman.netdisk.entity.pojo.EmailCode">
-        insert into netdisk.email_code
+        insert into email_code
         <trim prefix="(" suffix=")" suffixOverrides=",">
             <if test="bean.email != null">
                 email,
@@ -35,6 +36,7 @@
             <if test="bean.status != null">
                 status,
             </if>
+            purpose,
         </trim>
         <trim prefix="values (" suffix=")" suffixOverrides=",">
             <if test="bean.email!=null">
@@ -49,7 +51,9 @@
             <if test="bean.status!=null">
                 #{bean.status},
             </if>
+            #{bean.purpose},
         </trim>
+        on duplicate key update create_time=#{bean.createTime},status=#{bean.status},purpose=#{bean.purpose}
     </insert>
 
     <!--    根据email过期验证码-->
@@ -57,13 +61,15 @@
         update email_code
         set status = 1
         where email = #{email}
+          and purpose = #{purpose}
           and status = 0
     </update>
 
-    <!--    根据邮箱跟验证码查询-->
-    <select id="selectByEmailAndCode" resultMap="base_result_map">
-        select
-        <include refid="base_column_list"/>
-        from email_code where email =#{email} and code =#{code}
-    </select>
+    <!-- 有效期、用途和一次性消费在同一条语句中验证，避免并发复用。 -->
+    <update id="consumeCode">
+        update email_code set status=1
+        where email=#{email} and code=#{code} and purpose=#{purpose} and status=0
+          and create_time &gt;= #{validSince}
+          and create_time &lt;= #{validUntil}
+    </update>
 </mapper>

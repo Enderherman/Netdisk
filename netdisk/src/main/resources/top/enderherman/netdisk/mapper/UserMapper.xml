@@ -184,6 +184,7 @@
         <result column="qq_avatar" property="qqAvatar"/>
         <!--密码-->
         <result column="password" property="password"/>
+        <result column="session_version" property="sessionVersion"/>
         <!--创建时间-->
         <result column="create_time" property="createTime"/>
         <!--最后登录时间-->
@@ -200,7 +201,7 @@
     <sql id="base_column_list">
         user_id,nick_name,email,qq_open_id,qq_avatar,
 		 password,create_time,last_login_time,status,use_space,
-		 total_space
+		 total_space,session_version
     </sql>
 
 
@@ -208,7 +209,7 @@
     <select id="selectByEmail" resultMap="base_result_map">
         select
         <include refid="base_column_list"/>
-        from user_info where email=#{email}
+        from user_info where lower(email)=#{email}
     </select>
 
     <!--根据昵称查找-->
@@ -317,4 +318,18 @@
 
     </update>
 
+    <update id="upgradePassword">
+        update user_info set password=#{newPassword}
+        where user_id=#{userId} and password=#{oldPassword}
+    </update>
+
+    <update id="changePasswordAndRevoke">
+        update user_info set password=#{password},session_version=session_version+1
+        where user_id=#{userId} and session_version=#{expectedVersion}
+    </update>
+
+    <update id="changeStatusAndRevoke">
+        update user_info set status=#{status},session_version=session_version+1
+        where user_id=#{userId}
+    </update>
 </mapper>

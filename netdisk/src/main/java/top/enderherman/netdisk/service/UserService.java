@@ -33,6 +33,8 @@ public interface UserService {
 
     void resetPwd(String email, String password, String emailCode);
 
+    void changePassword(String userId, String currentPassword, String password);
+
     void updateUserByUserId(User user, String userId);
 
     SessionWebUserDto qqLogin(String code);

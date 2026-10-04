@@ -41,11 +41,13 @@ public class EmailCode implements Serializable {
      * 0:未使用 1:已使用
      */
     private Integer status;
+    /** 0 注册，1 找回密码。 */
+    private Integer purpose;
 
     @Override
     public String toString() {
         return "邮箱:" + (email == null ? "空" : email) +
-                "，验证码:" + (code == null ? "空" : code) +
+                "，验证码:[已隐藏]" +
                 "，创建时间:" + (createTime == null ? "空" : DateUtils.format(createTime, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern())) + "，0:未使用 1:已使用:" + (status == null ? "空" : status);
     }
 

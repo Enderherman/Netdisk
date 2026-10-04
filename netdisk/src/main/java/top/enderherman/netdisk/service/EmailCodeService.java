@@ -6,5 +6,5 @@ public interface EmailCodeService {
      */
     void sendEmailCode(String email, Integer type);
 
-    void checkEmailCode(String email, String code);
+    void checkEmailCode(String email, String code, Integer purpose);
 }

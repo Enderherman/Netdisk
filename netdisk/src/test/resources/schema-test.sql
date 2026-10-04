@@ -4,7 +4,8 @@ create table email_code
     code        varchar(5)   not null comment '验证码',
     create_time datetime     null comment '创建时间',
     status      tinyint(1)   null comment '0:未使用 1:已使用',
-    primary key (email, code)
+    purpose     tinyint     not null default 0 comment '0:注册 1:找回密码',
+    primary key (email, code, purpose)
 )
     comment '邮箱验证码';
 
@@ -79,7 +80,8 @@ create table user_info
     email           varchar(150) null comment '邮箱',
     qq_open_id      varchar(35)  null comment 'QQ_OPenId',
     qq_avatar       varchar(150) null comment 'QQ头像',
-    password        varchar(32)  null comment '密码',
+    password        varchar(255) null comment '带盐密码哈希',
+    session_version bigint       not null default 0 comment '会话撤销版本',
     create_time     timestamp    null comment '创建时间',
     last_login_time timestamp    null comment '最后登录时间',
     status          tinyint      null comment '用户状态: 0:禁用 1:启用',

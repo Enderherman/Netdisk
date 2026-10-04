@@ -4,6 +4,9 @@ server:
     context-path: /api
     session:
       timeout: PT60M
+      cookie:
+        http-only: true
+        same-site: lax
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}

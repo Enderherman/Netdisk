@@ -2,6 +2,8 @@ package top.enderherman.netdisk.entity.pojo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
+import lombok.ToString;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
@@ -42,7 +44,12 @@ public class User implements Serializable {
     /**
      * 密码
      */
+    @JsonIgnore
+    @ToString.Exclude
     private String password;
+
+    @JsonIgnore
+    private Long sessionVersion = 0L;
 
     /**
      * 创建时间
