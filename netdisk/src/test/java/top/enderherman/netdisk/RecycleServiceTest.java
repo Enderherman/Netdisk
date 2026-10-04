@@ -30,7 +30,7 @@ class RecycleServiceTest {
 
     @BeforeEach void seed() {
         clear();
-        jdbc.update("insert into user_info(user_id,use_space,total_space) values ('alice',100,1000),('bob',100,1000)");
+        jdbc.update("insert into user_info(user_id,status,use_space,total_space) values ('alice',1,100,1000),('bob',1,100,1000)");
         folder("root", "alice", "0", "资料", 2);
         folder("child", "alice", "root", "内层", 2);
         folder("deep", "alice", "child", "最内层", 2);
@@ -99,7 +99,7 @@ class RecycleServiceTest {
         fileService.recoverFile("alice", "root,leaf");
         assertEquals(2, state("root", "alice"));
         assertEquals(2, state("leaf", "alice"));
-        assertEquals("0", parent("leaf"));
+        assertEquals("deep", parent("leaf")); // 新契约：同批父目录恢复后，独立回收的子项回到原目录。
     }
 
     @Test void administratorCanPermanentlyDeleteActiveTree() {
@@ -128,11 +128,13 @@ class RecycleServiceTest {
         assertEquals(2, state("root", "alice"));
     }
 
-    @Test void restoringMultipleSameNamesReservesEachNewRootName() {
+    @Test void restoringSameNamesInDifferentOriginalFoldersKeepsTheirNames() {
         file("other", "alice", "child", "保留.txt", 1, 1);
         file("another", "alice", "deep", "保留.txt", 1, 1);
         fileService.recoverFile("alice", "other,another");
-        assertEquals(3, jdbc.queryForObject("select count(distinct file_name) from file_info where user_id='alice' and file_pid='0' and folder_type=0", Integer.class));
+        assertEquals("child", parent("other"));
+        assertEquals("deep", parent("another"));
+        assertEquals(1, jdbc.queryForObject("select count(*) from file_info where user_id='alice' and file_pid='0' and folder_type=0", Integer.class));
     }
 
     @Test void cacheFailureDoesNotRollBackSuccessfulDatabaseDeletion() {

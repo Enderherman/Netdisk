@@ -4,6 +4,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.enderherman.netdisk.annotation.GlobalInterceptor;
 import top.enderherman.netdisk.annotation.VerifyParam;
@@ -15,12 +16,28 @@ import top.enderherman.netdisk.entity.query.FileQuery;
 import top.enderherman.netdisk.entity.vo.FileInfoVO;
 import top.enderherman.netdisk.entity.vo.PaginationResultVO;
 import top.enderherman.netdisk.service.FileService;
+import top.enderherman.netdisk.service.impl.RecycleStorageService;
+import top.enderherman.netdisk.common.config.RecyclePolicySettings;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/recycle")
 public class RecycleController extends ABaseController {
     @Resource
     private FileService fileService;
+    @Resource private RecycleStorageService recycleStorage;
+    @Resource private RecyclePolicySettings recyclePolicy;
+
+    @GetMapping("/policy")
+    @GlobalInterceptor
+    public BaseResponse<?> policy() { return getSuccessResponse(recyclePolicy.policy()); }
+
+    @PostMapping("/clear")
+    @GlobalInterceptor
+    public BaseResponse<?> clear(HttpSession session) {
+        int count = recycleStorage.clear(getUserInfoFromSession(session).getUserId());
+        return getSuccessResponse(Map.of("deletedCount", count));
+    }
 
     /**
      * 查询回收站文件
