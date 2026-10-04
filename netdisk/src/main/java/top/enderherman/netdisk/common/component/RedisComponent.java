@@ -133,7 +133,9 @@ public class RedisComponent {
      * @param code 50位code
      */
     public void saveDownloadCode(String code, DownloadFileDto fileDto) {
-        redisUtils.setEx(Constants.REDIS_KEY_DOWNLOAD + code, fileDto, Constants.REDIS_KEY_EXPIRES_FIVE_MIN);
+        if (!redisUtils.setEx(Constants.REDIS_KEY_DOWNLOAD + code, fileDto, Constants.REDIS_KEY_EXPIRES_FIVE_MIN)) {
+            throw new BusinessException(500, "下载链接保存失败，请稍后重试");
+        }
     }
 
     /**

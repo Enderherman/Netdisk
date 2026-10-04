@@ -154,6 +154,10 @@ public class ACommonFileController extends ABaseController {
      * 有时效性的获取下载链接
      */
     protected BaseResponse<?> createDownloadUrl(String fileId, String userId) {
+        var owner = contentUserService.getUserInfoByUserId(userId);
+        if (owner == null || !Integer.valueOf(1).equals(owner.getStatus()) || owner.getSessionVersion() == null) {
+            throw new BusinessException(ResponseCodeEnum.CODE_901);
+        }
         FileInfo fileInfo = fileInfoService.getFileInfoByFileIdAndUserId(fileId, userId);
         contentService.requireUsable(fileInfo);
         contentService.resolve(fileInfo.getFilePath());
@@ -164,6 +168,7 @@ public class ACommonFileController extends ABaseController {
         fileDto.setDownloadCode(code);
         fileDto.setFileId(fileId);
         fileDto.setUserId(userId);
+        fileDto.setSessionVersion(owner.getSessionVersion());
         fileDto.setFileName(fileInfo.getFileName());
         fileDto.setFilePath(fileInfo.getFilePath());
         redisComponent.saveDownloadCode(code, fileDto);
@@ -190,6 +195,10 @@ public class ACommonFileController extends ABaseController {
         }
         var owner = contentUserService.getUserInfoByUserId(downloadFileDto.getUserId());
         if (owner == null || !Integer.valueOf(1).equals(owner.getStatus())) {
+            throw new BusinessException(ResponseCodeEnum.CODE_901);
+        }
+        if (downloadFileDto.getShareId() == null && (downloadFileDto.getSessionVersion() == null
+                || !java.util.Objects.equals(owner.getSessionVersion(), downloadFileDto.getSessionVersion()))) {
             throw new BusinessException(ResponseCodeEnum.CODE_901);
         }
         FileInfo current = fileInfoService.getFileInfoByFileIdAndUserId(downloadFileDto.getFileId(), downloadFileDto.getUserId());

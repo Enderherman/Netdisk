@@ -20,7 +20,8 @@ public class AGlobalExceptionHandlerController extends ABaseController {
     private static final Logger logger = LoggerFactory.getLogger(AGlobalExceptionHandlerController.class);
 
     @ExceptionHandler(value = Exception.class)
-    Object handleException(Exception e, HttpServletRequest request, HttpServletResponse response) {
+    Object handleException(Exception e, HttpServletRequest request, HttpServletResponse response) throws Exception {
+        if (response.isCommitted()) throw e;
         logger.error("请求错误，请求地址{},错误信息:", request.getRequestURL(), e);
         BaseResponse<?> ajaxResponse = new BaseResponse<>();
         //404

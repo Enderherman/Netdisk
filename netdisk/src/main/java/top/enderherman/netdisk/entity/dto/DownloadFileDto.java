@@ -15,4 +15,6 @@ public class DownloadFileDto {
     /** 非空表示分享下载；所有下载入口都必须再次验证该分享。 */
     private String shareId;
     private String userId;
+    /** 私有下载绑定签发时的账户版本；分享下载通过 shareId 实时校验。 */
+    private Long sessionVersion;
 }

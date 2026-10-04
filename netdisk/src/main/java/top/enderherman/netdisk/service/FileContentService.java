@@ -126,7 +126,11 @@ public class FileContentService {
                 remaining -= length;
             }
         } catch (IOException ex) {
-            if (!response.isCommitted()) throw new BusinessException(ResponseCodeEnum.CODE_500);
+            if (!response.isCommitted()) {
+                response.reset();
+                throw new BusinessException(ResponseCodeEnum.CODE_500);
+            }
+            throw new java.io.UncheckedIOException("文件传输已中断", ex);
         }
     }
 
