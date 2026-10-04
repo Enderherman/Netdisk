@@ -291,6 +291,37 @@ class FileContentHttpIntegrationTest {
         return issuedCode(result.getResponse().getContentAsString());
     }
 
+    @Test
+    void multiLevelThumbnailUsesFileOwnershipInsteadOfExposingStoragePaths() throws Exception {
+        Path cover = STORAGE.resolve("file/202610/ctOwner/owned.jpg.thumb.jpg");
+        Files.createDirectories(cover.getParent());
+        Files.write(cover, new byte[]{7,8,9});
+        jdbc.update("update file_info set file_cover=? where user_id=? and file_id='owned'", "202610/ctOwner/owned.jpg.thumb.jpg", OWNER);
+        mvc.perform(get("/file/thumbnail/owned").session(authenticated(OWNER)))
+                .andExpect(content().bytes(new byte[]{7,8,9})).andExpect(content().contentType("image/jpeg"));
+        rejected(mvc.perform(get("/file/thumbnail/owned").session(authenticated(OTHER))));
+        mvc.perform(get("/admin/thumbnail/{userId}/owned", OWNER).session(authenticated(ADMIN)))
+                .andExpect(content().bytes(new byte[]{7,8,9}));
+        rejected(mvc.perform(get("/admin/thumbnail/{userId}/owned", OWNER).session(authenticated(OTHER))));
+        jdbc.update("update file_info set del_flag=1 where user_id=? and file_id='owned'", OWNER);
+        rejected(mvc.perform(get("/file/thumbnail/owned").session(authenticated(OWNER))));
+    }
+
+    @Test
+    void shareThumbnailRevokesImmediatelyAndCannotEscapeStorage() throws Exception {
+        Path cover = STORAGE.resolve("file/202610/ctOwner/shared.thumb.jpg");
+        Files.createDirectories(cover.getParent()); Files.write(cover, new byte[]{9,8,7});
+        jdbc.update("update file_info set file_cover=? where user_id=? and file_id='shared'", "202610/ctOwner/shared.thumb.jpg", OWNER);
+        MockHttpSession extracted = extractShare();
+        mvc.perform(get("/showShare/thumbnail/{shareId}/shared", SHARE_ID).session(extracted))
+                .andExpect(content().bytes(new byte[]{9,8,7}));
+        rejected(mvc.perform(get("/showShare/thumbnail/{shareId}/secret", SHARE_ID).session(extracted)));
+        jdbc.update("update file_info set file_cover='../escape.jpg' where user_id=? and file_id='shared'", OWNER);
+        rejected(mvc.perform(get("/showShare/thumbnail/{shareId}/shared", SHARE_ID).session(extracted)));
+        jdbc.update("delete from file_share where share_id=?", SHARE_ID);
+        rejected(mvc.perform(get("/showShare/thumbnail/{shareId}/shared", SHARE_ID).session(extracted)));
+    }
+
     private String issueSharedDownload(MockHttpSession extracted) throws Exception {
         var result = mvc.perform(post("/showShare/createDownloadUrl/{shareId}/shared", SHARE_ID).session(extracted))
                 .andExpect(jsonPath("$.code").value(200)).andReturn();

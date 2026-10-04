@@ -7,6 +7,11 @@
 | `GET /file/content/{fileId}` | 登录且本人正常文件 | 原始内容预览 |
 | `GET /showShare/content/{shareId}/{fileId}` | 已提取该分享，实时校验有效期与目录范围 | 分享内容预览 |
 | `GET /admin/content/{userId}/{fileId}` | 当前管理员 | 管理端内容预览 |
+| `GET /file/thumbnail/{fileId}` | 登录且本人正常文件 | 图片缩略图 |
+| `GET /showShare/thumbnail/{shareId}/{fileId}` | 已提取且仍有效的分享范围 | 分享缩略图 |
+| `GET /admin/thumbnail/{userId}/{fileId}` | 当前管理员 | 管理端缩略图 |
+
+缩略图接口从 0.2.3 提供。客户端仅在 `fileCover` 非空时请求，不拼接物理路径；缺失封面显示文件图标。接口支持上传产生的多层存储路径，并沿用完整文件的实时授权。
 
 添加 `?download=true` 强制下载，保留完整中文文件名。原始内容支持图片、PDF、文本及浏览器原生音视频格式；Word/Excel 等不直接渲染时提供下载，不使用第三方在线预览上传私有文件。
 
